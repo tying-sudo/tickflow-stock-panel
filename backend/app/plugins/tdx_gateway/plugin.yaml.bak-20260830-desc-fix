@@ -1,0 +1,9 @@
+name: tdx_gateway
+display_name: "TDX LAN Gateway"
+runtime: none
+entry: app.plugins.tdx_gateway.provider:TdxGatewayProvider
+check: app.plugins.tdx_gateway.provider:availability
+datasets: [daily, adj_factor, minute, realtime, depth5, financial]
+api_key_env: TDX_GATEWAY_TOKEN
+description: "Calls a token-protected LAN gateway on the Windows TDX host. Provides raw daily K-lines, derived front-adjustment event factors, minute K-lines, explicit-symbol realtime snapshots actually returned by TDX, and whitelisted professional financial fields (FN)."
+install_hint: "Deploy the tdx-gateway service on the Windows TDX VM, then set TDX_GATEWAY_TOKEN and optional TDX_GATEWAY_URL on the Tick Stock Panel host."

@@ -80,8 +80,13 @@ def polars_limit_price(previous: pl.Expr, limit_pct: pl.Expr, *, up: bool) -> pl
     """Calculate exchange half-up prices with integer-cent arithmetic."""
     sign = 1 if up else -1
     numerator = ((1 + sign * limit_pct) * 100).round(0).cast(pl.Int64)
-    cents = (previous * 100 + 0.5).floor().cast(pl.Int64)
-    return ((cents * numerator + 50) // 100) / 100
+    # 首日/新入库标的没有昨收时会是 NaN。先转为 null 再进行整数分位，
+    # 否则 strict_cast 会在整个列求值时因 NaN 中断每日管道。
+    safe_previous = previous.fill_nan(None)
+    cents = (safe_previous * 100 + 0.5).floor().cast(pl.Int64)
+    return pl.when(safe_previous.is_not_null() & (safe_previous > 0)).then(
+        ((cents * numerator + 50) // 100) / 100
+    ).otherwise(None).cast(pl.Float64)
 
 
 def numpy_limit_pct_vectors(

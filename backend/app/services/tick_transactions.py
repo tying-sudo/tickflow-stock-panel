@@ -1,0 +1,231 @@
+"""真实 tick 级分笔成交 (通达信分笔协议, 经 TDX LAN Gateway pytdx 通道)。
+
+数据源事实 (2026-08-30 实测):
+  - 仅最近交易日分笔可用 (公共 TDX 行情服务器不提供历史分笔, get_history_transaction_data 返回空)
+  - 时间精度为分钟级 (HH:MM); 无毫秒/秒级 — Level-2 逐笔才有毫秒, 免费协议拿不到
+  - 每笔: 时间 / 成交价 / 成交量(手) / 笔数 / 方向 (0买 1卖 2中性; 5=盘后定价 8=竞价探测)
+  - 包含集合竞价段 (09:15-09:25) 与深市盘后定价交易段 (15:05-15:30)
+
+一致性: 分笔成交量总和与日K成交量、分笔价格范围与日K高低价核对 (量纲均为手)。
+原则: 拿不到真实数据就如实返回空/报错, 严禁模拟、随机或占位数据。
+"""
+from __future__ import annotations
+
+import json
+import logging
+import urllib.request
+from collections import defaultdict
+
+logger = logging.getLogger(__name__)
+
+_TICK_PAGE_COUNT = 40000  # 桥接内部按 ~1800/页自动翻页, 覆盖全天 (活跃股可达 1万+ 笔)
+
+# buyorsell → 方向标签
+_DIRECTION_LABELS = {
+    0: "buy",       # 买盘
+    1: "sell",      # 卖盘
+    2: "neutral",   # 中性盘
+    5: "after_hours",  # 盘后定价成交 (深市 15:05-15:30)
+    8: "auction",   # 集合竞价探测单/虚拟成交 (volume=0)
+}
+
+
+class TickUnavailable(RuntimeError):
+    """tick 数据源无法提供所请求的数据 (如实上报, 不做任何数据代偿)。"""
+
+
+def _gateway_request(path: str, payload: dict, timeout: float = 120) -> dict:
+    from app.plugins.tdx_gateway.provider import gateway_url, get_api_key
+
+    token = get_api_key()
+    if not token:
+        raise TickUnavailable("TDX_GATEWAY_TOKEN 未配置")
+    req = urllib.request.Request(
+        gateway_url() + path,
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read())
+
+
+def fetch_raw_ticks(symbol: str, trade_date: str | None = None) -> list[dict]:
+    """拉取分笔原始 rows (time/price/volume/num/buyorsell)。空列表 = 数据源无数据。"""
+    payload: dict = {"symbols": [symbol], "kind": "ticks", "count": _TICK_PAGE_COUNT}
+    if trade_date:
+        payload["date"] = trade_date.replace("-", "")
+    data = _gateway_request("/v1/tickdata", payload)
+    rows = (data.get("rows") or {}).get(symbol) or []
+    # 桥接层错误标记 (不再静默吞异常)
+    bad = [r for r in rows if isinstance(r, dict) and "error" in r]
+    if bad and len(bad) == len(rows):
+        raise TickUnavailable(f"分笔通道错误: {bad[0].get('error')}")
+    return [r for r in rows if isinstance(r, dict) and "error" not in r]
+
+
+def _daily_row(repo, symbol: str, day: str) -> dict | None:
+    try:
+        row = repo.execute_one(
+            "SELECT volume, amount, high, low, close FROM kline_daily "
+            "WHERE symbol = ? AND date = ?",
+            [symbol, day],
+        )
+    except Exception:  # noqa: BLE001
+        return None
+    if not row:
+        return None
+    return {"volume": float(row[0] or 0), "amount": float(row[1] or 0),
+            "high": float(row[2] or 0), "low": float(row[3] or 0)}
+
+
+def _pick_tick_date(repo, symbol: str, ticks: list[dict], requested: str | None) -> str | None:
+    """用成交量匹配判定分笔所属交易日 (TDX 分笔不带日期)。
+
+    候选: 今日(若已开盘) 与 日K最近交易日; 与日K成交量误差 <5% 者胜出。
+    """
+    tick_vol = sum(float(t.get("volume") or 0) for t in ticks)
+    if tick_vol <= 0:
+        return None
+
+    from app.market_time import cn_now, cn_today
+
+    candidates: list[str] = []
+    today = cn_today().isoformat()
+    now = cn_now()
+    if now.hour >= 9 and now.minute >= 15 and now.weekday() < 5:
+        candidates.append(today)
+    try:
+        latest = repo.latest_daily_date()
+        if latest is not None:
+            candidates.append(str(latest))
+    except Exception:  # noqa: BLE001
+        pass
+    if requested:
+        candidates.insert(0, requested)
+    # 去重保序
+    seen: set[str] = set()
+    candidates = [c for c in candidates if not (c in seen or seen.add(c))]
+
+    for day in candidates:
+        d = _daily_row(repo, symbol, day)
+        if d and d["volume"] > 0:
+            diff = abs(tick_vol - d["volume"]) / d["volume"]
+            if diff < 0.05:
+                return day
+    # 没有匹配 → 取第一个有日K的候选, 由 consistency.mismatch 如实标注
+    for day in candidates:
+        if _daily_row(repo, symbol, day):
+            return day
+    return None
+
+
+def _aggregate_minutes(ticks: list[dict]) -> list[dict]:
+    """分笔 → 分钟成交量聚合 (量纲: 手; 金额=价×量×100 元)。附时段标记。"""
+    agg: dict[str, dict] = {}
+    for t in ticks:
+        time_str = str(t.get("time") or "")
+        if len(time_str) < 4:
+            continue
+        minute = time_str[:5]
+        vol = float(t.get("volume") or 0)
+        price = float(t.get("price") or 0)
+        slot = agg.setdefault(minute, {
+            "minute": minute, "volume": 0.0, "buy_volume": 0.0,
+            "sell_volume": 0.0, "amount": 0.0, "segment": "continuous",
+        })
+        slot["volume"] += vol
+        slot["amount"] += price * vol * 100
+        direction = _DIRECTION_LABELS.get(t.get("buyorsell"), "other")
+        if direction == "buy":
+            slot["buy_volume"] += vol
+        elif direction == "sell":
+            slot["sell_volume"] += vol
+        if minute < "09:30":
+            slot["segment"] = "auction"        # 集合竞价 (09:15-09:25)
+        elif minute > "15:00":
+            slot["segment"] = "after_hours"    # 盘后定价交易 (深市 15:05-15:30)
+    return [agg[k] for k in sorted(agg)]
+
+
+def build_transactions(repo, symbol: str, requested_date: str | None,
+                       stock_name: str | None = None) -> dict:
+    """分笔成交完整响应。所有数据均为真实成交记录, 拿不到即抛 TickUnavailable。"""
+    raw = fetch_raw_ticks(symbol, requested_date)
+    if not raw:
+        if requested_date:
+            raise TickUnavailable(
+                f"数据源不提供 {requested_date} 的分笔记录 (通达信公共行情仅保留最近交易日分笔), "
+                "该日期分时图请使用分钟K数据"
+            )
+        raise TickUnavailable("行情服务器未返回分笔数据 (可能非交易时段)")
+
+    tick_date = _pick_tick_date(repo, symbol, raw, requested_date)
+    if requested_date and tick_date and requested_date != tick_date:
+        raise TickUnavailable(
+            f"所请求日期 {requested_date} 与分笔数据所属日 {tick_date} 不符; "
+            "分笔数据源仅提供最近交易日"
+        )
+
+    ticks = []
+    for t in raw:
+        price = t.get("price")
+        vol = t.get("volume")
+        try:
+            price = float(price) if price is not None else None
+            vol = float(vol) if vol is not None else None
+        except (TypeError, ValueError):
+            continue
+        if price is None or vol is None:
+            continue
+        bos = t.get("buyorsell")
+        ticks.append({
+            "time": str(t.get("time") or ""),
+            "price": price,
+            "volume": vol,                                    # 手
+            "num": int(t.get("num") or 0),                    # 笔数
+            "direction": _DIRECTION_LABELS.get(bos, "other"),
+        })
+
+    minute_volumes = _aggregate_minutes(ticks)
+    tick_vol = sum(t["volume"] for t in ticks)
+    prices = [t["price"] for t in ticks if t["volume"] > 0]
+    tick_high = max(prices) if prices else None
+    tick_low = min(prices) if prices else None
+
+    # 一致性核对: 分笔聚合 vs 日K (成交量手/价格范围)
+    consistency: dict = {"checked": False}
+    if tick_date:
+        d = _daily_row(repo, symbol, tick_date)
+        if d and d["volume"] > 0:
+            consistency = {
+                "checked": True,
+                "tick_volume": tick_vol,
+                "daily_volume": d["volume"],
+                "volume_diff_pct": round(abs(tick_vol - d["volume"]) / d["volume"] * 100, 3),
+                "tick_high": tick_high,
+                "tick_low": tick_low,
+                "daily_high": d["high"],
+                "daily_low": d["low"],
+                "volume_mismatch": abs(tick_vol - d["volume"]) / d["volume"] >= 0.05,
+                "note": "分笔含集合竞价与盘后定价段, 与日K成交量差异主要来自盘后定价",
+            }
+
+    segments = {
+        "auction": any(m["segment"] == "auction" for m in minute_volumes),
+        "after_hours": any(m["segment"] == "after_hours" for m in minute_volumes),
+    }
+
+    return {
+        "symbol": symbol,
+        "name": stock_name,
+        "date": tick_date,
+        "requested_date": requested_date,
+        "source": "tdx_gateway_ticks",
+        "precision": "minute",  # TDX 免费分笔协议为分钟级; 毫秒级需 Level-2 逐笔
+        "tick_count": len(ticks),
+        "ticks": ticks,
+        "minute_volumes": minute_volumes,
+        "segments": segments,
+        "consistency": consistency,
+    }

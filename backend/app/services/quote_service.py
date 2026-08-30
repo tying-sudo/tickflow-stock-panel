@@ -739,6 +739,14 @@ class QuoteService:
         self._update_volume_delta(stock_records, fetched_at)
 
         # ---- 写 kline_daily (不复权原始价格, 只有 OHLCV) ----
+        # 休市日守卫: 周六/周日行情接口返回的是快照 (close=上一交易日收盘价),
+        # 落盘会生成全平盘的假日K分区, 污染 latest_date → 看板涨跌全 0。跳过写盘。
+        from app.market_time import cn_now as _cn_now
+        if _cn_now().weekday() >= 5:
+            logger.info("休市日(周六/周日), 跳过实时行情日K落盘")
+            self._broadcast_quote_updated()
+            return
+
         daily_df = self._build_daily(stock_records)
         if not daily_df.is_empty() and self._repo:
             try:

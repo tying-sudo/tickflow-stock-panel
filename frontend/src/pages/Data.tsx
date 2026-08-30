@@ -137,6 +137,17 @@ export function Data() {
   })
 
   const [openSettings, setOpenSettings] = useState<string | null>(null)
+
+  // 基金(场外) 同步状态 —— 运行中 3s 轮询, 平时 60s
+  const fundSyncQ = useQuery({
+    queryKey: ['fund-sync-status'],
+    queryFn: api.fundSyncStatus,
+    refetchInterval: (q: any) => (q.state.data?.running ? 3_000 : 60_000),
+  })
+  const fundSync = useMutation({
+    mutationFn: api.fundSync,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['fund-sync-status'] }),
+  })
   const [showScheduleEdit, setShowScheduleEdit] = useState(false)
   const [showInstScheduleEdit, setShowInstScheduleEdit] = useState(false)
   const [indexExtendValue, setIndexExtendValue] = useState(6)
@@ -507,6 +518,20 @@ export function Data() {
               { label: '指标', table: 'etf_enriched' },
             ] as FieldTab[]}
             onShowFields={(t) => setSchemaTable(t ?? 'etf_daily')}
+          />
+        )
+      case 'funds':
+        return (
+          <StatCard
+            title="基金"
+            hint="场外基金 · 净值快照(天天基金)"
+            stats={s?.funds ?? null}
+            loading={isLoading}
+            tierKey="funds"
+            auto
+            subLabel={`净值覆盖 ${((s?.funds?.symbols_covered ?? 0)).toLocaleString()} 只 · ${s?.funds?.trading_days ?? 0} 日快照`}
+            onSettings={hasData ? () => setOpenSettings(v => v === 'funds' ? null : 'funds') : undefined}
+            settingsOpen={openSettings === 'funds'}
           />
         )
       case 'minute':
@@ -966,6 +991,49 @@ export function Data() {
         )}
         {editingExt && (
           <EditExtDialog config={editingExt} onClose={() => setEditingExt(null)} />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {openSettings === 'funds' && (
+          <SettingsModal title="基金 · 手动同步" onClose={() => setOpenSettings(null)}>
+            <div className="space-y-3">
+              <div className="rounded-card border border-border bg-base/30 p-4 space-y-3">
+                <div>
+                  <div className="text-sm font-medium text-foreground">场外基金净值快照</div>
+                  <div className="text-[11px] text-muted mt-1 leading-relaxed">
+                    从天天基金拉取全量场外基金维表与最新净值（每工作日 18:00 自动同步）。
+                    快照按日落盘，日积月累形成净值历史。
+                  </div>
+                </div>
+                {fundSyncQ.data?.last_summary && (
+                  <div className="text-[10px] text-muted font-mono">
+                    上次: {fundSyncQ.data.last_summary.snapshot_date} ·
+                    维表 {fundSyncQ.data.last_summary.fund_count.toLocaleString()} 只 ·
+                    净值 {fundSyncQ.data.last_summary.nav_rows.toLocaleString()} 条
+                    {fundSyncQ.data.last_summary.elapsed_s != null && ` · ${fundSyncQ.data.last_summary.elapsed_s}s`}
+                  </div>
+                )}
+                {fundSyncQ.data?.error && (
+                  <div className="text-[10px] text-danger">上次失败: {fundSyncQ.data.error}</div>
+                )}
+                <button
+                  onClick={() => fundSync.mutate()}
+                  disabled={fundSyncQ.data?.running || fundSync.isPending}
+                  className="w-full inline-flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-btn bg-accent/90 text-base text-xs font-medium hover:bg-accent disabled:opacity-40 disabled:pointer-events-none transition-colors duration-150"
+                >
+                  {fundSyncQ.data?.running || fundSync.isPending ? (
+                    <>
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      同步中…
+                    </>
+                  ) : (
+                    <>开始同步</>
+                  )}
+                </button>
+              </div>
+            </div>
+          </SettingsModal>
         )}
       </AnimatePresence>
 

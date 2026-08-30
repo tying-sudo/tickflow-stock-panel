@@ -20,6 +20,7 @@
 from __future__ import annotations
 
 import logging
+import math
 
 import polars as pl
 
@@ -130,21 +131,32 @@ def ladder_promo_aggs() -> list[pl.Expr]:
 
 def finalize_ladder_row(r: dict) -> dict:
     """把聚合行的梯队原始值整理为持久化字段(晋级率/ladder_completeness)。"""
-    height = int(r.get("max_consecutive") or 0)
-    rungs = int(r.get("rungs_filled") or 0)
+    # 历史 all-null 分组的 Polars max/sum 可能产生 NaN: int(NaN) 会炸掉整个盘后管道。
+    # 缺失的梯队观测 = 无确认梯队, 按 0 处理而不是虚构梯队高度/晋级率。
+    height = _finite_int(r.get("max_consecutive"))
+    rungs = _finite_int(r.get("rungs_filled"))
     completeness = (rungs / (height - 1)) if height >= 3 else 0.0
-    pool = int(r.get("promo_pool") or 0)
-    ok = int(r.get("promo_ok") or 0)
+    pool = _finite_int(r.get("promo_pool"))
+    ok = _finite_int(r.get("promo_ok"))
     promo = (ok / pool) if pool >= PROMO_MIN_POOL else None
     return {
-        "first_board": int(r.get("first_board") or 0),
-        "ge2_count": int(r.get("ge2_count") or 0),
-        "ge3_count": int(r.get("ge3_count") or 0),
-        "ge5_count": int(r.get("ge5_count") or 0),
+        "first_board": _finite_int(r.get("first_board")),
+        "ge2_count": _finite_int(r.get("ge2_count")),
+        "ge3_count": _finite_int(r.get("ge3_count")),
+        "ge5_count": _finite_int(r.get("ge5_count")),
         "ladder_completeness": round(completeness, 4),
         "promo_pool": pool,
         "promo_rate": round(promo, 4) if promo is not None else None,
     }
+
+
+def _finite_int(value: object) -> int:
+    """Normalize an aggregate count, rejecting null, NaN, and infinity."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return 0
+    return int(number) if math.isfinite(number) else 0
 
 
 def _ema(values: list[float], alpha: float = _EMA_ALPHA) -> list[float]:

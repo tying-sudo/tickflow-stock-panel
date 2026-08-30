@@ -861,7 +861,8 @@ def limit_ladder(
 
 def _parse_ext_columns(ext_columns: str) -> list[tuple[str, str]]:
     """解析 'config_id1.field1,config_id2.field2' 为 [(config_id, field_name), ...]。"""
-    result = []
+    result: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
     for part in ext_columns.split(","):
         part = part.strip()
         if "." not in part:
@@ -873,5 +874,9 @@ def _parse_ext_columns(ext_columns: str) -> list[tuple[str, str]]:
             continue
         if not is_valid_ext_ident(config_id) or "\x00" in field_name:
             continue
-        result.append((config_id, field_name))
+        spec = (config_id, field_name)
+        if spec in seen:
+            continue
+        seen.add(spec)
+        result.append(spec)
     return result

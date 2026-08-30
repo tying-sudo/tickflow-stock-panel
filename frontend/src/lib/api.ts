@@ -280,6 +280,32 @@ export interface WatchlistImportResult {
   unmatched_count: number
 }
 
+// ===== Fund（基金） =====
+export interface FundSearchResult {
+  code: string
+  name: string
+  fund_type?: string | null
+  company?: string | null
+  manager?: string | null
+}
+
+export interface FundGroupMember {
+  symbol: string
+  name?: string | null
+}
+
+export interface WatchlistGroup {
+  name: string
+  created_at?: string
+  symbols: string[]
+}
+
+export interface FundImportResult {
+  group: { name: string; count: number }
+  members: FundGroupMember[]
+  groups: WatchlistGroup[]
+}
+
 export interface Quote {
   symbol: string
   price?: number
@@ -2253,12 +2279,30 @@ export const api = {
   watchlistClear: () =>
     request<{ removed: number }>('/api/watchlist', { method: 'DELETE' }),
   watchlistQuotes: () => request<{ quotes: Quote[] }>('/api/watchlist/quotes'),
-  watchlistEnriched: (extColumns?: string) =>
+  watchlistEnriched: (extColumns?: string, symbols?: string) =>
     request<{ rows: any[]; as_of: string | null; elapsed_ms: number }>(
-      extColumns
-        ? `/api/watchlist/enriched?ext_columns=${encodeURIComponent(extColumns)}`
-        : '/api/watchlist/enriched',
+      (() => {
+        const params = new URLSearchParams()
+        if (extColumns) params.set('ext_columns', extColumns)
+        if (symbols) params.set('symbols', symbols)
+        const qs = params.toString()
+        return `/api/watchlist/enriched${qs ? `?${qs}` : ''}`
+      })(),
     ),
+
+  fundSearch: (q: string, limit = 10) =>
+    request<{ results: FundSearchResult[] }>(
+      `/api/fund/search?q=${encodeURIComponent(q)}&limit=${limit}`,
+    ),
+  fundHoldings: (code: string) =>
+    request<{ code: string; name: string; members: FundGroupMember[] }>(
+      `/api/fund/${encodeURIComponent(code)}/holdings`,
+    ),
+  fundImport: (code: string) =>
+    request<FundImportResult>('/api/fund/import', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    }),
 
   // timeframe='all' 时不传参数 → 后端不过滤周期, 返回日线+分钟合并列表
   screenerStrategies: async (assetType?: 'stock' | 'etf' | 'index', timeframe: '1d' | '1m' | 'all' = '1d') => {
@@ -2526,6 +2570,8 @@ export const api = {
 
   dataStatus: () => request<DataStatus>('/api/data/status'),
   dataClear: () => request<{ deleted_files: number }>('/api/data/clear', { method: 'POST' }),
+  fundSync: () => request<{ started: boolean; running: boolean }>('/api/data/funds/sync', { method: 'POST' }),
+  fundSyncStatus: () => request<FundSyncStatus>('/api/data/funds/status'),
   refreshCache: () => request<{ ok: boolean }>('/api/data/refresh-cache', { method: 'POST' }),
   enrichedSchema: (table: string) => request<EnrichedField[]>(`/api/data/schema/${table}`),
 
@@ -3271,6 +3317,34 @@ interface InstrumentsStats {
   named: number
 }
 
+export interface FundStats {
+  /** 基金总数(维表) — 卡片大数字 */
+  rows: number
+  fund_count?: number
+  /** 有净值基金数(最新快照) */
+  symbols_covered?: number
+  earliest_date?: string | null
+  latest_date?: string | null
+  /** 已积累净值快照天数 */
+  trading_days?: number
+}
+
+export interface FundSyncStatus {
+  running: boolean
+  started_at: string | null
+  finished_at: string | null
+  error: string | null
+  last_summary: {
+    fund_count: number
+    nav_rows: number
+    snapshot_date: string
+    nav_date_min: string | null
+    nav_date_max: string | null
+    elapsed_s: number
+  } | null
+  stats?: FundStats | null
+}
+
 export interface DataStatus {
   daily: TableStats | null
   enriched: TableStats | null
@@ -3280,6 +3354,7 @@ export interface DataStatus {
   etf_daily: TableStats | null
   etf_enriched: TableStats | null
   etf_instruments: InstrumentsStats | null
+  funds: FundStats | null
   minute: TableStats | null
   adj_factor: TableStats | null
   instruments: InstrumentsStats | null

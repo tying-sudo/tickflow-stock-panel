@@ -12,7 +12,7 @@ from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel
 
 from app.db_safe import is_valid_ext_ident, quote_ident
-from app.services import watchlist
+from app.services import etf_group_sync, fund_holdings, watchlist
 from app.services.watchlist_ocr import import_watchlist_image
 from app.services.watchlist_ocr.provider import get_ocr_provider
 
@@ -278,6 +278,10 @@ _WATCHLIST_COLS = [
 def watchlist_enriched(
     request: Request,
     ext_columns: str | None = Query(None, description="逗号分隔的 ext 列: config_id.field_name"),
+    symbols: str | None = Query(
+        None,
+        description="逗号分隔的 symbol 列表; 提供时以此替代自选列表 (分组成员视图用)",
+    ),
 ):
     """自选股 enriched 数据 — 直接从 enriched 最新日读取, 无即时计算。
 
@@ -287,7 +291,11 @@ def watchlist_enriched(
     t0 = time.perf_counter()
 
     repo = request.app.state.repo
-    symbols = [r["symbol"] for r in watchlist.list_symbols()]
+    if symbols:
+        symbol_list = [s.strip() for s in symbols.split(",") if s.strip()]
+    else:
+        symbol_list = [r["symbol"] for r in watchlist.list_symbols()]
+    symbols = symbol_list
     if not symbols:
         return {"rows": [], "as_of": None, "elapsed_ms": 0}
 
@@ -444,3 +452,60 @@ def _parse_ext_columns(ext_columns: str) -> list[tuple[str, str]]:
         if config_id and field_name and is_valid_ext_ident(config_id):
             result.append((config_id, field_name))
     return result
+
+
+class EtfGroupRequest(BaseModel):
+    symbol: str
+
+
+@router.post("/add-etf-group")
+def add_etf_group(req: EtfGroupRequest, request: Request):
+    """添加 ETF → 以 ETF 名建分组，ETF 本体与最新披露期成分股入组。
+
+    分组已存在同名时复用（补成员不删旧成员）。成分股取天天基金 F10
+    最新报告期股票持仓（半年报/年报为全量披露，季报 top10）。
+    """
+    symbol = req.symbol.strip()
+    repo = request.app.state.repo
+    try:
+        asset = repo.resolve_asset_type(symbol)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(400, f"无法识别标的类型: {e}") from e
+    if asset != "etf":
+        raise HTTPException(400, f"{symbol} 不是 ETF，仅支持 ETF 建成分股分组")
+    try:
+        info = fund_holdings.fetch_etf_holdings(symbol)
+    except fund_holdings.FundHoldingsError as e:
+        raise HTTPException(502, f"获取 ETF 成分股失败: {e}") from e
+    name = repo.get_name_map([symbol]).get(symbol) or info["fund_name"] or symbol
+    groups = watchlist.list_groups()
+    group = next((g for g in groups if g.get("name") == name), None)
+    if group is None:
+        try:
+            groups, group = watchlist.create_group(name)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+    # add_batch 逐只 insert(0)，倒序传入 → 最终顺序 = ETF 在顶 + 成分股按权重降序
+    members = [symbol] + [h["symbol"] for h in info["holdings"]]
+    members = list(dict.fromkeys(members))
+    rows, added = watchlist.add_batch(list(reversed(members)), note="", group_id=group["id"])
+    try:
+        etf_group_sync.record_source(group["id"], symbol, info["report_date"],
+                                     [h["symbol"] for h in info["holdings"]])
+    except Exception as e:  # noqa: BLE001
+        logger.warning("record etf group source failed: %s", e)
+    return {
+        "group": group,
+        "added": added,
+        "total": len(members),
+        "fund_name": info["fund_name"],
+        "report_date": info["report_date"],
+        "holdings_count": len(info["holdings"]),
+    }
+
+
+@router.post("/sync-etf-groups")
+def sync_etf_groups_endpoint(request: Request):
+    """手动触发: 全部 ETF/场外基金成分股分组同步到最新披露期。"""
+    repo = request.app.state.repo
+    return etf_group_sync.sync_etf_groups(repo=repo)

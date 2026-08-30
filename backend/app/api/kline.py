@@ -1363,3 +1363,42 @@ async def rebuild_enriched(request: Request):
 # 长时间任务专用线程池（隔离于 FastAPI 默认线程池，防止阻塞请求处理）
 import concurrent.futures as _cf
 _long_task_executor = _cf.ThreadPoolExecutor(max_workers=2, thread_name_prefix="long-task")
+
+
+# ===== 分笔成交 (tick) — 真实成交记录, 通达信分笔协议经 TDX 网关 =====
+
+@router.get("/transactions")
+def get_transactions(
+    request: Request,
+    symbol: str = Query(..., description="标的代码"),
+    trade_date: date | None = Query(None, alias="date", description="交易日期; 分笔源仅提供最近交易日"),
+):
+    """某标的最近交易日的真实分笔成交。
+
+    返回逐笔明细 (时间/价格/成交量(手)/笔数/方向) + tick 聚合的分钟成交量柱 +
+    与日K的一致性核对。数据源为通达信分笔协议 (经 TDX 网关):
+    - 公共行情服务器不提供历史分笔, 非最近交易日如实返回 404, 绝不以模拟数据代偿
+    - 时间精度为分钟级 (TDX 免费分笔协议限制; 毫秒级逐笔需 Level-2 数据源)
+    - 含集合竞价段 (09:15-09:25) 与深市盘后定价段 (15:05-15:30) 单独标识
+    """
+    repo = request.app.state.repo
+    from app.plugins.tdx_gateway import provider as tdx_provider
+    from app.services import tick_transactions
+
+    ok, reason = tdx_provider.availability()
+    if not ok:
+        raise HTTPException(status_code=403, detail=f"tick 成交数据需要 TDX 网关: {reason}")
+
+    asset_type = repo.resolve_asset_type(symbol)
+    stock_info = _get_stock_info(repo, symbol) if asset_type == "stock" else _get_asset_info(repo, symbol, asset_type)
+    stock_name = stock_info.get("name")
+
+    try:
+        return tick_transactions.build_transactions(
+            repo, symbol, trade_date.isoformat() if trade_date else None, stock_name,
+        )
+    except tick_transactions.TickUnavailable as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+    except Exception as e:
+        logger.exception("transactions failed: %s", symbol)
+        raise HTTPException(status_code=502, detail=f"tick 通道失败: {e}") from e

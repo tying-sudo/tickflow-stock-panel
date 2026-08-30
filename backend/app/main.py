@@ -20,6 +20,7 @@ from app.api import (
     data,
     ext_data,
     financials,
+    funds,
     indices,
     intraday,
     kline,
@@ -35,6 +36,7 @@ from app.api import (
     stock_analysis,
     strategy,
     watchlist,
+    watchlist_groups,
 )
 from app.api import auth as auth_api
 from app.api import settings as settings_api
@@ -452,6 +454,8 @@ app.include_router(core_router)
 app.include_router(auth_api.router)
 app.include_router(kline.router)
 app.include_router(watchlist.router)
+app.include_router(watchlist_groups.router)
+app.include_router(funds.router)
 app.include_router(screener.router)
 app.include_router(backtest.router)
 app.include_router(mining.router)

@@ -1107,6 +1107,36 @@ def start_scheduler(repo: KlineRepository, capset: CapabilitySet) -> AsyncIOSche
         replace_existing=True,
     )
 
+    # ETF 成分股分组定期同步: 每工作日 16:10 拉取最新披露期持仓,
+    # 新增成分股自动入组、退出披露的同步成员自动出组 (用户手动加的不动)。
+    def _etf_groups_sync_task(on_progress=None):
+        from app.services import etf_group_sync
+        return etf_group_sync.sync_etf_groups(repo=repo)
+
+    scheduler.add_job(
+        lambda: _run_tracked(_etf_groups_sync_task, "etf_groups_sync"),
+        trigger=CronTrigger(day_of_week="mon-fri", hour=16, minute=10,
+                            timezone="Asia/Shanghai"),
+        id="etf_groups_sync",
+        misfire_grace_time=3600,
+        replace_existing=True,
+    )
+
+    # 场外基金净值快照: 每工作日 18:00 从天天基金拉取全市场最新净值,
+    # 每日一份落盘 (data/funds/nav/date=...), 日积月累形成净值历史。
+    def _fund_sync_task(on_progress=None):
+        from app.services import fund_sync
+        return fund_sync.sync_all(repo.store.data_dir)
+
+    scheduler.add_job(
+        lambda: _run_tracked(_fund_sync_task, "fund_sync"),
+        trigger=CronTrigger(day_of_week="mon-fri", hour=18, minute=0,
+                            timezone="Asia/Shanghai"),
+        id="fund_sync",
+        misfire_grace_time=3600,
+        replace_existing=True,
+    )
+
     # 定时复盘 (AI 大盘复盘报告): 工作日到点自动生成并归档。
     # 默认关闭 —— 仅当用户在复盘页开启时才注册 job。
     # 复用 recap_market_once(非流式) + market_recap_reports.save_report(落盘)。

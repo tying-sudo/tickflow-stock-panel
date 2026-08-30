@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from datetime import date
 from pathlib import Path
 
@@ -57,7 +58,14 @@ def _score(value: float, low: float, high: float) -> float:
     """
     if high <= low:
         return 50.0
-    return float(max(0, min(100, round((value - low) / (high - low) * 100))))
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return 50.0
+    # 历史分区中缺失涨跌幅会是 NaN: 派生聚合不允许被单个缺失组件炸掉或打满分。
+    if not math.isfinite(numeric):
+        return 50.0
+    return float(max(0, min(100, round((numeric - low) / (high - low) * 100))))
 
 
 def _compute_subscores(metrics: dict) -> dict:
@@ -183,8 +191,8 @@ def _aggregate_daily(df: pl.DataFrame, index_pct_map: dict | None = None) -> pl.
         # 新增: 涨跌幅分布(赚钱/抗跌维度所需) — 全部向量化, 一次算出
         *(
             [
-                pl.col("change_pct").mean().alias("avg_pct"),
-                pl.col("change_pct").median().alias("median_pct"),
+                pl.col("change_pct").fill_nan(None).mean().alias("avg_pct"),
+                pl.col("change_pct").fill_nan(None).median().alias("median_pct"),
                 pl.col("change_pct").ge(0.03).sum().alias("strong_up_count"),
                 pl.col("change_pct").le(-0.03).sum().alias("strong_down_count"),
             ]

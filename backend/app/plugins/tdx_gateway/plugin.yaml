@@ -1,0 +1,9 @@
+name: tdx_gateway
+display_name: "TDX LAN Gateway"
+runtime: none
+entry: app.plugins.tdx_gateway.provider:TdxGatewayProvider
+check: app.plugins.tdx_gateway.provider:availability
+datasets: [daily, adj_factor, minute, realtime, depth5, financial]
+api_key_env: TDX_GATEWAY_TOKEN
+description: "通达信局域网只读网关（Windows TDX 主机，Bearer Token + IP 白名单）。提供：全市场日K（不复权，量转手、额转元）、事件法除权因子（front/none 收盘价比值，非 ForwardFactor 直写）、分钟K 1m~60m（/v1/kline 盘后通道，最早 2026-05-19）与当日盘中 1m 分时补拉（/v1/tickdata，单批 ≤8 只、仅当日约 240 根）、显式标的实时快照（全市场扇出，50 只/批、6 并发）、买卖五档快照（Buyp/Buyv/Sellp/Sellv → 真假封板判定，不落全档）与白名单 FN 专业财务五表（空值记 0）。"
+install_hint: "Deploy the tdx-gateway service on the Windows TDX VM, then set TDX_GATEWAY_TOKEN and optional TDX_GATEWAY_URL on the Tick Stock Panel host."

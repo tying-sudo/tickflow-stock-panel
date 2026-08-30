@@ -42,6 +42,7 @@ _table_cache: dict[str, dict | None] = {
     "etf_daily": None,
     "etf_enriched": None,
     "etf_instruments": None,
+    "funds": None,
     "minute": None,
     "adj_factor": None,
     "instruments": None,
@@ -345,6 +346,13 @@ def _safe_aggregate_etf_daily(repo) -> dict | None:
     return None
 
 
+def _safe_aggregate_funds(data_dir: Path) -> dict | None:
+    """基金(场外)统计 — 天天基金维表 + 每日净值快照, 走 services.fund_sync 聚合。"""
+    from app.services import fund_sync
+
+    return fund_sync.aggregate_funds(data_dir)
+
+
 def _safe_aggregate_adj_factor(repo) -> dict | None:
     """adj_factor 视图统计,日期范围对齐日 K 覆盖区间。"""
     try:
@@ -595,6 +603,7 @@ def status(request: Request) -> dict:
     "etf_daily":         _get_table_stats("etf_daily",         lambda: _safe_aggregate_etf_daily(repo)),
     "etf_enriched":      _get_table_stats("etf_enriched",      lambda: _safe_aggregate_etf_enriched(repo)),
     "etf_instruments":   _get_table_stats("etf_instruments",   lambda: _safe_aggregate_etf_instruments(repo)),
+    "funds":             _get_table_stats("funds",             lambda: _safe_aggregate_funds(data_dir)),
     "minute":      _get_table_stats("minute",      lambda: _safe_aggregate_minute(repo)),
         "adj_factor":  _get_table_stats("adj_factor",  lambda: _safe_aggregate_adj_factor(repo)),
         "instruments": _get_table_stats("instruments", lambda: _safe_aggregate_instruments(repo)),
@@ -875,3 +884,43 @@ def refresh_cache(request: Request) -> dict:
     ScreenerService.clear_history_cache()
     logger.info("refresh-cache: Polars 缓存已重建")
     return {"ok": True}
+
+
+# ===== 基金(场外) 同步 — 天天基金公开接口 =====
+
+@router.post("/funds/sync")
+def start_fund_sync(request: Request) -> dict:
+    """后台线程同步基金维表 + 全市场净值快照。"""
+    from app.services import fund_sync
+
+    data_dir = request.app.state.repo.store.data_dir
+    return fund_sync.start_sync(data_dir)
+
+
+@router.get("/funds/status")
+def fund_sync_status(request: Request) -> dict:
+    """基金同步状态 + 最新统计。"""
+    from app.services import fund_sync
+
+    data_dir = request.app.state.repo.store.data_dir
+    return fund_sync.get_status(data_dir)
+
+
+# ===== 基金(场外) 同步 — 天天基金公开接口 =====
+
+@router.post("/funds/sync")
+def start_fund_sync(request: Request) -> dict:
+    """后台线程同步基金维表 + 全市场净值快照。"""
+    from app.services import fund_sync
+
+    data_dir = request.app.state.repo.store.data_dir
+    return fund_sync.start_sync(data_dir)
+
+
+@router.get("/funds/status")
+def fund_sync_status(request: Request) -> dict:
+    """基金同步状态 + 最新统计。"""
+    from app.services import fund_sync
+
+    data_dir = request.app.state.repo.store.data_dir
+    return fund_sync.get_status(data_dir)
