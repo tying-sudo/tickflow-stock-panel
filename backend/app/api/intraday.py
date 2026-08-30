@@ -13,7 +13,7 @@ import asyncio
 import json
 import time
 
-from fastapi import APIRouter, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request
 from sse_starlette.sse import EventSourceResponse
 
 router = APIRouter(prefix="/api/intraday", tags=["quotes"])
@@ -199,3 +199,34 @@ def refresh_quotes(request: Request):
     if qs:
         return qs.refresh()
     return {"error": "QuoteService not available"}
+
+
+@router.get("/depth5")
+def get_depth5(request: Request, symbol: str = Query(..., description="标的代码")):
+    """单只五档盘口快照 (卖五..买五, 价格+量)。
+
+    需要 DEPTH5 能力 (Pro+ 套餐); 无权限时返回 403, 前端据此降级隐藏面板。
+    """
+    capset = getattr(request.app.state, "capabilities", None)
+    from app.tickflow.capabilities import Cap
+    if capset is None or not capset.has(Cap.DEPTH5):
+        raise HTTPException(status_code=403, detail="当前套餐无五档盘口权限 (需 Pro+)")
+
+    from app.tickflow.client import get_client
+
+    try:
+        d = get_client().depth.get(symbol)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"五档盘口获取失败: {e}") from e
+
+    asks = [
+        {"price": p, "volume": v}
+        for p, v in zip(d.get("ask_prices") or [], d.get("ask_volumes") or [])
+        if isinstance(p, (int, float)) and p > 0
+    ][:5]
+    bids = [
+        {"price": p, "volume": v}
+        for p, v in zip(d.get("bid_prices") or [], d.get("bid_volumes") or [])
+        if isinstance(p, (int, float)) and p > 0
+    ][:5]
+    return {"symbol": symbol, "asks": asks, "bids": bids, "ts": d.get("timestamp")}

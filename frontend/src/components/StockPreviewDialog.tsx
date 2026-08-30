@@ -8,6 +8,7 @@ import { cn } from '@/lib/cn'
 import { cnSignal } from '@/lib/signals'
 import { fmtPct } from '@/lib/format'
 import { StockPanel, getDefaultRange } from '@/components/StockPanel'
+import { Depth5Panel } from '@/components/Depth5Panel'
 import { WatchlistAddMenu } from '@/components/WatchlistAddMenu'
 import { StockMultiDayIntradayChart } from '@/components/StockMultiDayIntradayChart'
 import { DatePicker } from '@/components/DatePicker'
@@ -223,7 +224,7 @@ export function StockPreviewDialog({ symbol, name, onClose, triggerInfo }: Props
             transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
             className={cn(
               'relative rounded-card border border-border bg-base shadow-2xl overflow-hidden flex flex-col transition-all duration-200 ease-smooth',
-              maximized ? 'w-screen h-screen max-w-none max-h-none' : 'w-[92vw] max-w-[1100px] max-h-[95vh]',
+              maximized ? 'w-screen h-screen max-w-none max-h-none' : 'w-[96vw] max-w-[1500px] max-h-[95vh]',
             )}
           >
             {/* 顶栏 */}
@@ -491,6 +492,13 @@ export function StockPreviewDialog({ symbol, name, onClose, triggerInfo }: Props
                   priceLines={monitorPriceLines}
                   onPriceDoubleClick={openPriceAlert}
                   refetchIntervalMs={intradayRefetchMs}
+                  rightPanel={
+                    <Depth5Panel
+                      symbol={symbol}
+                      height={420}
+                      refetchIntervalMs={intradayRefetchMs}
+                    />
+                  }
                 />
               ) : (
                 <>
@@ -499,14 +507,25 @@ export function StockPreviewDialog({ symbol, name, onClose, triggerInfo }: Props
                   dateRange={dateRange}
                   infoBarOnly
                 />
-                <StockMultiDayIntradayChart
-                  symbol={symbol}
-                  days={effectiveIntradayDays}
-                  height={480}
-                  refetchIntervalMs={intradayRefetchMs}
-                  priceLines={monitorPriceLines}
-                  onPriceDoubleClick={openPriceAlert}
-                />
+                <div className="flex items-start gap-3">
+                  <div className="min-w-0 flex-1">
+                    <StockMultiDayIntradayChart
+                      symbol={symbol}
+                      days={effectiveIntradayDays}
+                      height={480}
+                      refetchIntervalMs={intradayRefetchMs}
+                      priceLines={monitorPriceLines}
+                      onPriceDoubleClick={openPriceAlert}
+                    />
+                  </div>
+                  <div className="w-60 shrink-0">
+                    <Depth5Panel
+                      symbol={symbol}
+                      height={480}
+                      refetchIntervalMs={intradayRefetchMs}
+                    />
+                  </div>
+                </div>
                 </>
               )}
             </div>

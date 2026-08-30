@@ -602,9 +602,13 @@ def get_minute_batch(request: Request, body: dict):
     # 判据改为: 周末必回退; 工作日收盘后(>=15:30)仍无今日日K → 节假日, 回退。
     if not trade_date_str:
         today = cn_today()
+        now_cn = cn_now()
         need_fallback = today.weekday() >= 5  # 周六/周日必非交易日
+        # 开盘前(0:00-9:29)今日不可能有分钟K, 直接回退最近交易日
+        # (否则工作日凌晨/早盘前 expected=0: 既不补拉也不返回, 分时列全空)
+        if now_cn.hour < 9 or (now_cn.hour == 9 and now_cn.minute < 30):
+            need_fallback = True
         if not need_fallback:
-            now_cn = cn_now()
             after_close = now_cn.hour > 15 or (now_cn.hour == 15 and now_cn.minute >= 30)
             if after_close:
                 latest_daily = repo.latest_daily_date()
@@ -800,8 +804,11 @@ def get_minute(
         # 非交易日(周末/节假日)才回退到本地最近有数据的交易日。
         today = cn_today()
         need_fallback = today.weekday() >= 5  # 周六/周日必非交易日
+        # 开盘前(0:00-9:29)今日不可能有分钟K, 直接回退最近交易日 (与 minute-batch 同口径)
+        now_cn = cn_now()
+        if now_cn.hour < 9 or (now_cn.hour == 9 and now_cn.minute < 30):
+            need_fallback = True
         if not need_fallback:
-            now_cn = cn_now()
             after_close = now_cn.hour > 15 or (now_cn.hour == 15 and now_cn.minute >= 30)
             if after_close:
                 latest_daily = repo.latest_daily_date()
@@ -982,6 +989,15 @@ async def sync_minute(request: Request):
                     import polars as pl
                     inst = pl.read_parquet(inst_path, columns=["symbol"])
                     universe = sorted(set(universe) | set(inst["symbol"].to_list()))
+                except Exception:  # noqa: BLE001
+                    pass
+            # 补充 ETF 标的 (分钟数据分层存储, sync_and_persist_minute 内按 asset_type 分流)
+            etf_inst_path = repo.store.data_dir / "instruments_etf" / "instruments_etf.parquet"
+            if etf_inst_path.exists():
+                try:
+                    import polars as pl
+                    etf_inst = pl.read_parquet(etf_inst_path, columns=["symbol"])
+                    universe = sorted(set(universe) | set(etf_inst["symbol"].to_list()))
                 except Exception:  # noqa: BLE001
                     pass
             # 剔除指数 symbol: 指数分钟K无本地存储, 落库会污染 kline_minute

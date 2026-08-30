@@ -40,6 +40,8 @@ interface Props {
   refetchIntervalMs?: number
   /** 只渲染信息条, 隐藏图表 (用于分时 tab 共享信息条) */
   infoBarOnly?: boolean
+  /** 第三列面板 (如五档盘口详情), 渲染在分时图右侧; 传入后布局变为 [日K | 分时 | 面板] */
+  rightPanel?: React.ReactNode
 }
 
 export { getDefaultRange }
@@ -64,6 +66,7 @@ export function StockPanel({
   watchlistPending,
   refetchIntervalMs,
   infoBarOnly = false,
+  rightPanel,
 }: Props) {
   const [linkedPrice, setLinkedPrice] = useState<number | null>(null)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
@@ -150,11 +153,11 @@ export function StockPanel({
       />
 
       {infoBarOnly ? null : (
-      <div className="flex gap-3 items-start">
+      <div className={rightPanel ? 'grid grid-cols-[1fr_1fr_14rem] gap-3 items-start' : 'grid grid-cols-2 gap-3 items-start'}>
         <StockDailyKChart
           symbol={symbol}
           height={height}
-          className="flex-1 min-w-0"
+          className="min-w-0"
           dateRange={dateRange}
           markers={markers}
           ranges={ranges}
@@ -170,8 +173,8 @@ export function StockPanel({
           refetchIntervalMs={refetchIntervalMs}
         />
 
-        {showIntraday && selectedDate && !intradayDismissed && (
-          <div className="relative flex-1 min-w-0 border-l border-border pl-3">
+        {showIntraday && selectedDate && !intradayDismissed ? (
+          <div className="relative min-w-0 border-l border-border pl-3">
             <button
               onClick={() => setIntradayDismissed(true)}
               className="absolute -left-1.5 -top-1.5 z-10 flex h-5 w-5 items-center justify-center rounded-full border border-border bg-surface text-muted shadow-sm transition-colors hover:text-foreground hover:bg-elevated"
@@ -192,7 +195,10 @@ export function StockPanel({
               refetchIntervalMs={refetchIntervalMs}
             />
           </div>
+        ) : (
+          <div className="min-w-0" />
         )}
+        {rightPanel && <div className="min-w-0">{rightPanel}</div>}
       </div>
       )}
     </div>

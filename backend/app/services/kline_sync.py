@@ -1118,10 +1118,10 @@ def fetch_adj_factor_single(symbol: str) -> pl.DataFrame:
     return _normalize_adj_factor(raw)
 
 
-def _latest_minute_datetime(repo: KlineRepository) -> datetime | None:
-    """本地分钟 K 数据的最新时间。"""
+def _latest_minute_datetime(repo: KlineRepository, table: str = "kline_minute") -> datetime | None:
+    """本地分钟 K 数据的最新时间 (table: kline_minute / kline_etf_minute)。"""
     try:
-        res = repo.execute_one("SELECT max(datetime) FROM kline_minute")
+        res = repo.execute_one(f"SELECT max(datetime) FROM {table}")
         if res and res[0]:
             d = res[0]
             if isinstance(d, datetime):
@@ -1132,10 +1132,10 @@ def _latest_minute_datetime(repo: KlineRepository) -> datetime | None:
     return None
 
 
-def _earliest_minute_datetime(repo: KlineRepository) -> datetime | None:
+def _earliest_minute_datetime(repo: KlineRepository, table: str = "kline_minute") -> datetime | None:
     """本地分钟 K 数据的最早时间 (用于向前扩展的起点)。"""
     try:
-        res = repo.execute_one("SELECT min(datetime) FROM kline_minute")
+        res = repo.execute_one(f"SELECT min(datetime) FROM {table}")
         if res and res[0]:
             d = res[0]
             if isinstance(d, datetime):
@@ -1264,32 +1264,18 @@ def sync_and_persist_minute(
 
     now = datetime.now()
 
-    if extend_backward:
-        # 向前扩展模式: 从本地最早数据往前补, 叠加已有数据避免缺口。
-        earliest_dt = _earliest_minute_datetime(repo)
-        # 按交易日换算自然日 (7/5 系数)。>41 交易日时 +10 天余量覆盖节假日。
-        # (分段由 sync_minute_batch 的 segment_trading_days 控制, 与此处的区间天数独立。)
-        calendar_days = int(days * 7 / 5) + (10 if days > 41 else 0)
-        if earliest_dt:
-            end_time = earliest_dt
-            start_time = end_time - timedelta(days=calendar_days)
-        else:
-            # 本地无数据 → 从今天往前拉
-            start_time = now - timedelta(days=calendar_days)
-            end_time = now
-    else:
-        # 默认增量模式: 首次拉取回溯 N 天, 已有数据则从最新时间增量补到今天
-        # force_full_days=True: 强制回溯 days 自然日 (个股补齐历史, 不增量)
-        last_dt = _latest_minute_datetime(repo)
-        if force_full_days:
-            # 按交易日换算自然日 (7/5 系数), 确保覆盖足够交易日
-            calendar_days = int(days * 7 / 5) + 5
-            start_time = now - timedelta(days=calendar_days)
-        elif last_dt:
-            start_time = last_dt
-        else:
-            start_time = now - timedelta(days=days)
-        end_time = now
+    # 分流: 股票与 ETF 分钟数据分层存储 (kline_minute / kline_etf_minute),
+    # 拉取路由 (custom provider 按标的类型走不同接口) 与落盘目录都必须分开。
+    # ETF 此前从未纳入分钟同步 (universe 无 ETF 标的 + 此处硬编码 asset_type="stock"),
+    # 2026-08-31 起纳入: universe 含 ETF 时自动分层同步与增量。
+    etf_set = repo.get_etf_symbol_set()
+    stock_syms = [s for s in symbols if s not in etf_set]
+    etf_syms = [s for s in symbols if s in etf_set]
+    groups: list[tuple[str, list[str]]] = []
+    if stock_syms:
+        groups.append(("stock", stock_syms))
+    if etf_syms:
+        groups.append(("etf", etf_syms))
 
     limit = resolve_limit(
         capset,
@@ -1299,40 +1285,69 @@ def sync_and_persist_minute(
         default_rpm_when_unset=False,
     )
 
-    # 流式落盘: 每段拉完立即写盘, 内存峰值 = 单段 (而非全量)。
-    # 全量攒内存曾导致 1 年全市场分钟 K OOM 卡死 (3 亿行 / 数十 GB)。
-    minute_dir = repo.store.data_dir / "kline_minute"
-    written_box = [0]  # list 闭包, 绕过 Python 闭包外层赋值
-
-    def _persist(seg_df: pl.DataFrame) -> None:
-        # 单股自动补齐可能与另一个补齐请求同时写同一日期分区。Windows 不允许
-        # 替换仍被另一写入占用的临时文件,因此读-改-写必须复用仓库写锁。
-        with repo._write_lock:
-            written_box[0] += _write_minute_partition(seg_df, minute_dir)
-
     segment_days = preferences.get_minute_sync_segment_days()
-    sync_minute_batch(
-        symbols, start_time=start_time, end_time=end_time,
-        batch_size=limit.batch, rpm=limit.rpm,
-        on_chunk_done=on_chunk_done,
-        segment_trading_days=segment_days,
-        on_segment=_persist,
-        asset_type="stock",
-    )
+    total_written = 0
+    for asset_type, group_syms in groups:
+        table = "kline_etf_minute" if asset_type == "etf" else "kline_minute"
 
-    if written_box[0] == 0:
-        return 0
-    written = written_box[0]
+        if extend_backward:
+            # 向前扩展模式: 从本地最早数据往前补, 叠加已有数据避免缺口。
+            earliest_dt = _earliest_minute_datetime(repo, table=table)
+            # 按交易日换算自然日 (7/5 系数)。>41 交易日时 +10 天余量覆盖节假日。
+            # (分段由 sync_minute_batch 的 segment_trading_days 控制, 与此处的区间天数独立。)
+            calendar_days = int(days * 7 / 5) + (10 if days > 41 else 0)
+            if earliest_dt:
+                end_time = earliest_dt
+                start_time = end_time - timedelta(days=calendar_days)
+            else:
+                # 本地无数据 → 从今天往前拉
+                start_time = now - timedelta(days=calendar_days)
+                end_time = now
+        else:
+            # 默认增量模式: 首次拉取回溯 N 天, 已有数据则从最新时间增量补到今天
+            # force_full_days=True: 强制回溯 days 自然日 (个股补齐历史, 不增量)
+            last_dt = _latest_minute_datetime(repo, table=table)
+            if force_full_days:
+                # 按交易日换算自然日 (7/5 系数), 确保覆盖足够交易日
+                calendar_days = int(days * 7 / 5) + 5
+                start_time = now - timedelta(days=calendar_days)
+            elif last_dt:
+                start_time = last_dt
+            else:
+                start_time = now - timedelta(days=days)
+            end_time = now
 
-    # 刷新视图
-    try:
-        d = repo.store.data_dir.as_posix()
-        repo.db.execute(
-            f"""CREATE OR REPLACE VIEW kline_minute AS
-                SELECT * FROM read_parquet('{d}/kline_minute/**/*.parquet', union_by_name=true)"""
+        minute_dir = repo.store.data_dir / table
+        written_box = [0]
+
+        def _persist(seg_df: pl.DataFrame, _dir=minute_dir, _box=written_box) -> None:
+            # 单股自动补齐可能与另一个补齐请求同时写同一日期分区。Windows 不允许
+            # 替换仍被另一写入占用的临时文件,因此读-改-写必须复用仓库写锁。
+            with repo._write_lock:
+                _box[0] += _write_minute_partition(seg_df, _dir)
+
+        sync_minute_batch(
+            group_syms, start_time=start_time, end_time=end_time,
+            batch_size=limit.batch, rpm=limit.rpm,
+            on_chunk_done=on_chunk_done,
+            segment_trading_days=segment_days,
+            on_segment=_persist,
+            asset_type=asset_type,
         )
-    except Exception as e:  # noqa: BLE001
-        logger.warning("refresh kline_minute view failed: %s", e)
 
-    logger.info("minute K synced: %d rows (%d symbols)", written, len(symbols))
-    return written
+        if written_box[0] == 0:
+            continue
+        total_written += written_box[0]
+
+        # 刷新视图
+        try:
+            d = repo.store.data_dir.as_posix()
+            repo.db.execute(
+                f"""CREATE OR REPLACE VIEW {table} AS
+                    SELECT * FROM read_parquet('{d}/{table}/**/*.parquet', union_by_name=true)"""
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning("refresh %s view failed: %s", table, e)
+
+    logger.info("minute K synced: %d rows (%d symbols)", total_written, len(symbols))
+    return total_written

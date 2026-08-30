@@ -67,7 +67,16 @@ def _resolve_universe(capset: CapabilitySet, repo=None) -> list[str]:
         try:
             all_a = get_pool("CN_Equity_A", refresh=True)
             if all_a:
-                return sorted(all_a)
+                # 合并 ETF 标的 (分钟/日K 分层存储按 asset_type 分流, 不会污染股票池)
+                base = set(all_a)
+                d0 = Path(settings.data_dir)
+                etf_inst = d0 / "instruments_etf" / "instruments_etf.parquet"
+                if etf_inst.exists():
+                    try:
+                        base.update(pl.read_parquet(etf_inst, columns=["symbol"])["symbol"].to_list())
+                    except Exception as e:  # noqa: BLE001
+                        logger.warning("etf instruments supplement failed: %s", e)
+                return sorted(base)
         except Exception as e:  # noqa: BLE001
             logger.warning("CN_Equity_A pool unavailable, fallback: %s", e)
 
@@ -82,6 +91,13 @@ def _resolve_universe(capset: CapabilitySet, repo=None) -> list[str]:
             base.update(inst["symbol"].to_list())
         except Exception as e:  # noqa: BLE001
             logger.warning("instruments supplement failed: %s", e)
+    # ETF 标的单独补充 (instruments.parquet 仅含股票)
+    etf_inst = d / "instruments_etf" / "instruments_etf.parquet"
+    if etf_inst.exists():
+        try:
+            base.update(pl.read_parquet(etf_inst, columns=["symbol"])["symbol"].to_list())
+        except Exception as e:  # noqa: BLE001
+            logger.warning("etf instruments supplement failed: %s", e)
     # 过滤自选兜底里的指数 symbol (指数日K走独立 kline_index_* 存储,
     # 进股票池会污染 kline_daily/kline_minute)。ETF 刻意保留 (既有行为)。
     if repo is not None:
