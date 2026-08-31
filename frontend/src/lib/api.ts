@@ -2571,7 +2571,7 @@ export const api = {
   dataStatus: () => request<DataStatus>('/api/data/status'),
   dataClear: () => request<{ deleted_files: number }>('/api/data/clear', { method: 'POST' }),
   depth5: (symbol: string) =>
-    request<Depth5Snapshot>(`/api/intraday/depth5?symbol=${encodeURIComponent(symbol)}`),
+    request<Depth5Snapshot>(`/api/intraday/depth5?symbol=${encodeURIComponent(symbol)}`, { quiet: true }),
   fundSync: () => request<{ started: boolean; running: boolean }>('/api/data/funds/sync', { method: 'POST' }),
   fundSyncStatus: () => request<FundSyncStatus>('/api/data/funds/status'),
   refreshCache: () => request<{ ok: boolean }>('/api/data/refresh-cache', { method: 'POST' }),
@@ -3329,6 +3329,8 @@ export interface Depth5Snapshot {
   asks: Depth5Level[]
   bids: Depth5Level[]
   ts: number | null
+  /** 数据源: tdx_gateway | tickflow */
+  source?: string
 }
 
 export interface FundStats {

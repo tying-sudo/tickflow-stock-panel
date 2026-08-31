@@ -34,7 +34,7 @@ export function Depth5Panel({ symbol, refetchIntervalMs, height = 420, className
     staleTime: 3000,
   })
 
-  const noCap = depth.error instanceof Error && depth.error.message.includes('403')
+  const noCap = !!depth.error
   const asks = [...(depth.data?.asks ?? [])].reverse() // 卖五在上, 卖一最靠近中间
   const bids = depth.data?.bids ?? []
   const ts = depth.data?.ts ? new Date(depth.data.ts).toLocaleTimeString('zh-CN', { hour12: false }) : null
@@ -63,17 +63,28 @@ export function Depth5Panel({ symbol, refetchIntervalMs, height = 420, className
     >
       <div className="flex shrink-0 items-center justify-between border-b border-border/60 px-2 py-1">
         <span className="text-[11px] font-semibold text-foreground">五档盘口</span>
-        {ts && <span className="font-mono text-[10px] text-muted">{ts}</span>}
+        <span className="flex items-center gap-1.5">
+          {depth.data?.source && (
+            <span className="rounded bg-elevated px-1 py-0.5 text-[9px] text-muted">
+              {depth.data.source === 'tdx_gateway' ? 'TDX' : 'TickFlow'}
+            </span>
+          )}
+          {ts && <span className="font-mono text-[10px] text-muted">{ts}</span>}
+        </span>
       </div>
 
       {noCap ? (
         <div className="flex flex-1 flex-col items-center justify-center gap-1 px-3 text-center">
-          <span className="text-xs text-muted">五档数据需要 Pro+ 套餐</span>
+          <span className="text-[11px] leading-relaxed text-muted">
+            {depth.error instanceof Error && depth.error.message
+              ? depth.error.message
+              : '五档数据不可用 (需配置 TDX 网关或 Pro+ 套餐)'}
+          </span>
           <a
             href="/settings?tab=data-sources"
             className="text-[10px] text-accent hover:underline"
           >
-            查看数据源 →
+            前往数据源设置 →
           </a>
         </div>
       ) : depth.isLoading ? (

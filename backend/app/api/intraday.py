@@ -205,12 +205,45 @@ def refresh_quotes(request: Request):
 def get_depth5(request: Request, symbol: str = Query(..., description="标的代码")):
     """单只五档盘口快照 (卖五..买五, 价格+量)。
 
-    需要 DEPTH5 能力 (Pro+ 套餐); 无权限时返回 403, 前端据此降级隐藏面板。
+    数据源优先级:
+      1. TDX 网关 (VM 通达信, 无套餐限制) — 实时快照的 Buyp/Buyv/Sellp/Sellv 五档
+      2. TickFlow depth (需 DEPTH5 能力, Pro+ 套餐)
+    两者都不可用时返回 403, 前端据此显示降级提示。
     """
+    # ---- 1. TDX 网关 (优先) ----
+    from app.plugins.tdx_gateway import provider as tdx_provider
+
+    tdx_ok, tdx_reason = tdx_provider.availability()
+    if tdx_ok:
+        try:
+            data = tdx_provider.TdxGatewayProvider().get_depth5([symbol]).get(symbol)
+            if data:
+                asks = [
+                    {"price": p, "volume": v}
+                    for p, v in zip(data.get("ask_prices") or [], data.get("ask_volumes") or [])
+                    if isinstance(p, (int, float)) and p > 0
+                ][:5]
+                bids = [
+                    {"price": p, "volume": v}
+                    for p, v in zip(data.get("bid_prices") or [], data.get("bid_volumes") or [])
+                    if isinstance(p, (int, float)) and p > 0
+                ][:5]
+                if asks or bids:
+                    return {"symbol": symbol, "asks": asks, "bids": bids,
+                            "source": "tdx_gateway", "ts": data.get("timestamp")}
+        except Exception as e:  # noqa: BLE001
+            import logging
+            logger.warning("depth5 via TDX gateway failed (%s): %s", symbol, e)
+    elif symbol:
+        import logging
+        logger.debug("depth5 TDX gateway unavailable: %s", tdx_reason)
+
+    # ---- 2. TickFlow (需 DEPTH5 能力) ----
     capset = getattr(request.app.state, "capabilities", None)
     from app.tickflow.capabilities import Cap
     if capset is None or not capset.has(Cap.DEPTH5):
-        raise HTTPException(status_code=403, detail="当前套餐无五档盘口权限 (需 Pro+)")
+        detail = "五档盘口不可用: TDX 网关未配置 且 当前套餐无五档权限 (需 Pro+)"
+        raise HTTPException(status_code=403, detail=detail)
 
     from app.tickflow.client import get_client
 
@@ -229,4 +262,4 @@ def get_depth5(request: Request, symbol: str = Query(..., description="标的代
         for p, v in zip(d.get("bid_prices") or [], d.get("bid_volumes") or [])
         if isinstance(p, (int, float)) and p > 0
     ][:5]
-    return {"symbol": symbol, "asks": asks, "bids": bids, "ts": d.get("timestamp")}
+    return {"symbol": symbol, "asks": asks, "bids": bids, "source": "tickflow", "ts": d.get("timestamp")}
