@@ -50,7 +50,8 @@ def get_depth5(request: Request, symbol: str = Query(..., description="标的代
             if pr_f > 0:
                 pairs.append((pr_f, v_f))
         pairs.sort(key=lambda x: x[0], reverse=reverse)
-        return [{"price": pr, "volume": v} for pr, v in pairs[:5]]
+        # 档位数自适应: TdxW Quant 当前 5 档, 未来 L2 十档时自动透传 10 档。
+        return [{"price": pr, "volume": v} for pr, v in pairs[:10]]
 
     return {
         "symbol": symbol,

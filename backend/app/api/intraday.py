@@ -11,10 +11,13 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import time
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from sse_starlette.sse import EventSourceResponse
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/intraday", tags=["quotes"])
 
@@ -218,24 +221,29 @@ def get_depth5(request: Request, symbol: str = Query(..., description="标的代
         try:
             data = tdx_provider.TdxGatewayProvider().get_depth5([symbol]).get(symbol)
             if data:
-                asks = [
-                    {"price": p, "volume": v}
-                    for p, v in zip(data.get("ask_prices") or [], data.get("ask_volumes") or [])
-                    if isinstance(p, (int, float)) and p > 0
-                ][:5]
-                bids = [
-                    {"price": p, "volume": v}
-                    for p, v in zip(data.get("bid_prices") or [], data.get("bid_volumes") or [])
-                    if isinstance(p, (int, float)) and p > 0
-                ][:5]
+                # 与 /api/kline/depth5 同一契约: asks 升序 (卖1最低),
+                # bids 降序 (买1最高) — 不依赖源内顺序; 档位数自适应
+                # (TdxW Quant 当前 5 档, 未来 L2 十档时自动透传 10 档)。
+                def levels(prices, volumes, *, reverse: bool) -> list[dict]:
+                    pairs = []
+                    for pr, v in zip(list(prices or []), list(volumes or [])):
+                        try:
+                            pr_f, v_f = float(pr or 0), float(v or 0)
+                        except (TypeError, ValueError):
+                            continue
+                        if pr_f > 0:
+                            pairs.append((pr_f, v_f))
+                    pairs.sort(key=lambda x: x[0], reverse=reverse)
+                    return [{"price": pr, "volume": v} for pr, v in pairs[:10]]
+
+                asks = levels(data.get("ask_prices"), data.get("ask_volumes"), reverse=False)
+                bids = levels(data.get("bid_prices"), data.get("bid_volumes"), reverse=True)
                 if asks or bids:
                     return {"symbol": symbol, "asks": asks, "bids": bids,
                             "source": "tdx_gateway", "ts": data.get("timestamp")}
         except Exception as e:  # noqa: BLE001
-            import logging
             logger.warning("depth5 via TDX gateway failed (%s): %s", symbol, e)
     elif symbol:
-        import logging
         logger.debug("depth5 TDX gateway unavailable: %s", tdx_reason)
 
     # ---- 2. TickFlow (需 DEPTH5 能力) ----

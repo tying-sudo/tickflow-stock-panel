@@ -541,6 +541,22 @@ class TdxGatewayProvider:
                 snapshot = snapshots.get(symbol)
                 if not snapshot:
                     continue
+                if _book_inconsistent_with_last(snapshot):
+                    # TdxW 有时会在同一份快照里给出与 Now 自相矛盾的陈旧盘口
+                    # (如 Now=31.28 而 bid1=31.08)。宁可空档也不展示误导数据。
+                    logger.warning(
+                        "depth5 %s: book contradicts Now=%s (stale TdxW book) — dropping levels",
+                        symbol,
+                        snapshot.get("Now"),
+                    )
+                    result[symbol] = {
+                        "ask_prices": [],
+                        "ask_volumes": [],
+                        "bid_prices": [],
+                        "bid_volumes": [],
+                        "timestamp": fetched_ms,
+                    }
+                    continue
                 result[symbol] = {
                     "ask_prices": _depth_levels(snapshot.get("Sellp")),
                     "ask_volumes": _depth_levels(snapshot.get("Sellv"), integer=True),
@@ -809,15 +825,62 @@ def _columnar_financial_records(columns) -> list[dict[str, Any]]:
     ]
 
 
+# 盘口档位上限: TdxW Quant 当前快照只提供 5 档 (2026-08-31 实测, 字段集固定
+# 26 键无 L2 十档字段); 若未来网关返回十档, 透传全量由前端自适应渲染。
+_DEPTH_MAX_LEVELS = 10
+
+
 def _depth_levels(value: Any, *, integer: bool = False) -> list[float | int]:
-    """Normalize one TDX five-level array, preserving zero volumes."""
+    """Normalize one TDX level array (up to 10 levels), preserving source order.
+
+    No zero-padding: callers zip/filter on price > 0, so the returned length
+    is exactly the number of levels the source actually provided (5 today,
+    10 if L2 ever becomes available on the Quant interface).
+    """
     values = value if isinstance(value, list) else []
     result: list[float | int] = []
-    for item in values[:5]:
+    for item in values[:_DEPTH_MAX_LEVELS]:
         number = _number(item)
         result.append(int(number) if integer and number is not None else (number or 0.0))
-    result.extend([0] * (5 - len(result)))
     return result
+
+
+# 盘口与现价的最大可信偏差。真实盘口的最优档必然紧贴最新成交价
+# (同一快照内原子产生, 偏差仅来自档位刷新时序, 通常 ≤1 tick)。
+_DEPTH_TOLERANCE = 0.005  # 0.5%
+
+
+def _first_positive_level(value: Any) -> float:
+    """Best non-zero price of one side, 0.0 when the side is empty (涨停/跌停)."""
+    for item in value if isinstance(value, list) else []:
+        number = _number(item)
+        if number is not None and number > 0:
+            return float(number)
+    return 0.0
+
+
+def _book_inconsistent_with_last(snapshot: dict[str, Any]) -> bool:
+    """Detect the stale-TdxW-book failure: levels that contradict this very
+    snapshot's ``Now`` (observed 2026-08-31: Now=31.28 while bid1=31.08).
+
+    A genuine book brackets the last price — bid1 ≤ Now ≤ ask1 (one side may
+    be empty at a limit). Any best level deviating from ``Now`` by more than
+    the tolerance marks the whole book as stale and untrustworthy.
+    """
+    try:
+        now = float(snapshot.get("Now") or 0)
+    except (TypeError, ValueError):
+        now = 0.0
+    if now <= 0:
+        return False  # 无现价可对照 (周末 Now=0 等边界), 不做校验
+    tol = now * _DEPTH_TOLERANCE
+    bid1 = _first_positive_level(snapshot.get("Buyp"))
+    ask1 = _first_positive_level(snapshot.get("Sellp"))
+    if bid1 and abs(bid1 - now) > tol:
+        return True
+    if ask1 and abs(ask1 - now) > tol:
+        return True
+    return False
 
 
 def _forward_factor_event_dates(rows: list[dict[str, Any]]) -> list[datetime.date]:
