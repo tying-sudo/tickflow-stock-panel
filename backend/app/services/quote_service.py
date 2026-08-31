@@ -739,11 +739,12 @@ class QuoteService:
         self._update_volume_delta(stock_records, fetched_at)
 
         # ---- 写 kline_daily (不复权原始价格, 只有 OHLCV) ----
-        # 休市日守卫: 周六/周日行情接口返回的是快照 (close=上一交易日收盘价),
-        # 落盘会生成全平盘的假日K分区, 污染 latest_date → 看板涨跌全 0。跳过写盘。
-        from app.market_time import cn_now as _cn_now
-        if _cn_now().weekday() >= 5:
-            logger.info("休市日(周六/周日), 跳过实时行情日K落盘")
+        # 休市日守卫: 周末零成本直判 + 法定节假日 (工作日休市) 由交易日探针剔除。
+        # 手动刷新 (refresh_now) 不经过轮询门控 _holiday_gate, 此处是落盘前最后一道
+        # 防线: 休市日接口返回的是上一交易日快照, 落盘会生成全平盘假日K分区,
+        # 污染 latest_date → 看板涨跌全 0。探针未知 (None) 维持现状行为。
+        if self._persist_holiday_blocked():
+            logger.info("休市日(周末或节假日), 跳过实时行情日K落盘")
             self._broadcast_quote_updated()
             return
 
@@ -928,6 +929,19 @@ class QuoteService:
         if phase == "close_final":
             return (cn_today(), "close")
         return None
+
+    @staticmethod
+    def _persist_holiday_blocked(now: datetime | None = None) -> bool:
+        """休市日 (周末/法定节假日) 日K落盘守卫。True = 跳过实时行情写盘。
+
+        轮询侧由 _holiday_gate 停轮询, 但手动刷新 (refresh_now) 直达落盘路径,
+        必须在此独立兜底。周末由探针内部 weekday 直判 (零成本); 工作日休市
+        走探测链 (fuyao 日历 → tickflow 时间戳), 结论带 TTL 缓存不增加请求压力;
+        未知 (None) 维持现状 — 与轮询门控同语义。now 参数供测试注入时间。
+        """
+        from app.services import trading_day
+
+        return trading_day.is_trading_day(now) is False
 
     def _holiday_gate(self) -> bool:
         """交易日探针门控: 确定休市 → False (停止轮询, 含 final 定版)。

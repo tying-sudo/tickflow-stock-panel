@@ -230,6 +230,38 @@ def test_minute_refresh_gate_passes_when_trading(monkeypatch):
     assert svc._gate_reason() is None
 
 
+# ---- 消费方 3: 实时行情日K落盘守卫 ----
+
+def test_quote_service_persist_guard_blocks_on_holiday(monkeypatch):
+    """手动刷新 (refresh_now) 直达落盘路径: 探针判休市 → 拒绝写盘。"""
+    from app.services.quote_service import QuoteService
+
+    qs = QuoteService()
+    monkeypatch.setattr(trading_day, "is_trading_day", lambda now=None: False)
+    assert qs._persist_holiday_blocked() is True
+
+
+def test_quote_service_persist_guard_allows_trading_and_unknown(monkeypatch):
+    from app.services.quote_service import QuoteService
+
+    qs = QuoteService()
+    monkeypatch.setattr(trading_day, "is_trading_day", lambda now=None: True)
+    assert qs._persist_holiday_blocked() is False
+    # 未知 → 维持现状 (与轮询门控同语义, 不引入新行为)
+    monkeypatch.setattr(trading_day, "is_trading_day", lambda now=None: None)
+    assert qs._persist_holiday_blocked() is False
+
+
+def test_quote_service_persist_guard_weekend_zero_cost(monkeypatch):
+    """周末由探针内部 weekday 直判, 不应触发任何网络探测。"""
+    from app.services.quote_service import QuoteService
+
+    qs = QuoteService()
+    _no_probes(monkeypatch)
+    sat = datetime(2026, 8, 29, 10, 0, tzinfo=CN)  # 周六
+    assert qs._persist_holiday_blocked(sat) is True
+
+
 # ---- fuyao 日历解析 ----
 
 def test_fuyao_provider_trading_days_conversion(monkeypatch):
