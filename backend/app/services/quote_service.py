@@ -588,6 +588,57 @@ class QuoteService:
             self._fetch_full_market_quotes()
             return self._fetched_at > before
 
+    def _custom_full_market_realtime(self, provider_name: str) -> list[dict]:
+        """自定义源全市场实时拉取 — 适配两种 get_realtime 契约。
+
+        - tdx_gateway 插件: get_realtime(symbols=[...]) 显式 symbols 契约,
+          内部 50 只/批 × 6 并发 (全市场 ~25-30s); 裸调必抛
+          "requires an explicit watchlist or monitor symbol"。
+        - YAML GenericHTTPProvider: get_realtime() 无参单请求全市场契约。
+
+        上游 v0.2.2 调用点只有无参分支, 与 tdx 契约不兼容 → 自合并 +
+        realtime_data_provider=tdx_gateway 起全市场实时拉取全程失败
+        (2026-08-31 实测盘中 3064 次失败, 看板数据全靠盘后日K管道)。
+        此处按实时拉取偏好 (设置→监控) 本地展开 symbols, 优先走显式契约;
+        TypeError (实现无 symbols 形参, YAML 源) 回退无参契约。
+        """
+        from app.data_providers import custom as custom_sources
+        from app.services import preferences
+
+        provider = custom_sources.get_provider(provider_name)
+
+        symbols: list[str] = []
+        if self._repo:
+            if preferences.get_realtime_pull_stock():
+                inst = self._repo.get_instruments()
+                if not inst.is_empty() and "symbol" in inst.columns:
+                    symbols.extend(inst["symbol"].cast(pl.Utf8).to_list())
+            if preferences.get_realtime_pull_etf():
+                etf_inst = self._repo.get_etf_instruments()
+                if not etf_inst.is_empty() and "symbol" in etf_inst.columns:
+                    symbols.extend(etf_inst["symbol"].cast(pl.Utf8).to_list())
+        if preferences.get_realtime_pull_index():
+            core = set(preferences.get_realtime_index_symbols() or self.CORE_INDEX_SYMBOLS)
+            if preferences.get_realtime_index_mode() == "core":
+                # 与 tickflow 分支同口径: 指数监控规则标的并入轮询
+                engine = getattr(self._app_state, "monitor_engine", None) if self._app_state else None
+                if engine:
+                    for _r in list(engine.rules.values()):
+                        if _r.get("enabled", True) and _r.get("asset_type") == "index" and _r.get("scope") == "symbols":
+                            core.update(s for s in _r.get("symbols", []) if s)
+            elif self._repo:  # mode=all → 本地全量指数集
+                core |= set(self._repo.get_index_symbol_set())
+            symbols.extend(sorted(core))
+
+        seen: set[str] = set()
+        symbols = [s for s in symbols if s and not (s in seen or seen.add(s))]
+        try:
+            if symbols:
+                return provider.get_realtime(symbols=symbols)
+        except TypeError:
+            pass  # 实现无 symbols 形参 (YAML 源契约) → 无参全市场
+        return provider.get_realtime()
+
     def _fetch_full_market_quotes(self) -> None:
         """拉取全市场行情 → 写 daily + 计算 enriched + 更新缓存。"""
         from app.services import preferences
@@ -599,7 +650,7 @@ class QuoteService:
                 try:
                     t0 = time.perf_counter()
                     now_ts = time.perf_counter()
-                    records = custom_sources.get_provider(provider_name).get_realtime()
+                    records = self._custom_full_market_realtime(provider_name)
                 except Exception as e:  # noqa: BLE001
                     logger.warning("自定义实时行情拉取失败: %s", e)
                     return
