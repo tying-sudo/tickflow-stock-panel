@@ -490,6 +490,12 @@ class TdxGatewayProvider:
                     logger.warning("TDX realtime snapshot for %s lacks valid Now/LastClose; skipping it", symbol)
                     continue
                 change_amount = last_price - prev_close
+                # TDX 快照 Amount 单位为万元 → 元 (日K契约 amount=元)。
+                # 2026-08-31 实测: 未换算的快照金额经实时覆写流入当日 kline_daily
+                # 分区 (000001.SZ amount=97322 万元口径), 策略 amount_min 按元
+                # 过滤全市场 0 通过 → 策略页整页 0 命中。Volume 快照单位=手,
+                # 与日K契约一致, 不换算。
+                amount_wan = _number(snapshot.get("Amount"))
                 records.append({
                     "symbol": symbol,
                     "last_price": last_price,
@@ -498,7 +504,7 @@ class TdxGatewayProvider:
                     "high": _number(snapshot.get("Max")),
                     "low": _number(snapshot.get("Min")),
                     "volume": _number(snapshot.get("Volume")),
-                    "amount": _number(snapshot.get("Amount")),
+                    "amount": amount_wan * 1e4 if amount_wan is not None else None,
                     "change_amount": change_amount,
                     "change_pct": change_amount / prev_close,
                 })

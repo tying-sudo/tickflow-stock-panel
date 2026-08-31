@@ -97,18 +97,33 @@ def _watchlist_symbols() -> set[str]:
     return {row["symbol"] for row in watchlist.list_symbols()}
 
 
-def _fetch_holdings(src: dict) -> tuple[str, str, list[str]]:
-    """按 kind 分发拉取持仓 → (名称, 披露期, [symbol...])。"""
+def _fetch_holdings(src: dict) -> dict:
+    """按 kind 分发拉取成分股 → {fund_name, report_date, members, index, status}。
+
+    - kind=etf:  多源合成 (跟踪指数官方成分优先, 披露标注/兜底)
+    - kind=fund: 场外基金走 pingzhongdata 前十大重仓 (原口径)。
+      2026-08-31 回退: 曾统一走 resolve_holdings, 但主动基金半年报"全量
+      披露"会给分组带出 100+ 标的, 组内等权涨跌幅严重失真 —— 全量披露
+      是监管口径, 不是"重仓成分"概念。
+    """
     from app.services import fund_holdings
     if src.get("kind") == "fund":
         info = fund_holdings.fetch_fund_holdings(src["symbol"])
-    else:
-        info = fund_holdings.fetch_etf_holdings(src["symbol"])
-    return (
-        info.get("fund_name") or "",
-        info.get("report_date") or "",
-        [h["symbol"] for h in info["holdings"]],
-    )
+        return {
+            "fund_name": info.get("fund_name") or "",
+            "report_date": info.get("report_date") or "",
+            "members": [h["symbol"] for h in info["holdings"]],
+            "index": None,
+            "status": "degraded",
+        }
+    info = fund_holdings.resolve_holdings(src["symbol"])
+    return {
+        "fund_name": info.get("fund_name") or "",
+        "report_date": info.get("report_date") or "",
+        "members": [h["symbol"] for h in info["holdings"]],
+        "index": info.get("index"),
+        "status": "authoritative" if info.get("index") else "degraded",
+    }
 
 
 def _backfill_sources(repo, groups: list[dict], sources: dict) -> int:
@@ -179,7 +194,10 @@ def sync_etf_groups(repo=None) -> dict:
         kind = src.get("kind", "etf")
         checked += 1
         try:
-            fund_name, report_date, new_constituents = _fetch_holdings(src)
+            fetched = _fetch_holdings(src)
+            fund_name = fetched["fund_name"]
+            report_date = fetched["report_date"]
+            new_constituents = fetched["members"]
         except Exception as e:  # noqa: BLE001
             failed += 1
             details.append({"group": gname, "kind": kind, "symbol": src["symbol"],
@@ -214,12 +232,15 @@ def sync_etf_groups(repo=None) -> dict:
                 sources[gid].update({
                     "kind": kind,
                     "report_date": report_date,
+                    "index_code": (fetched.get("index") or {}).get("index_code"),
+                    "status": fetched["status"],
                     "synced_members": sorted(new_set),
                     "synced_at": _now(),
                 })
                 _write_sources(sources)
             details.append({"group": gname, "kind": kind, "symbol": src["symbol"],
-                            "changed": False, "report_date": report_date})
+                            "changed": False, "report_date": report_date,
+                            "index": fetched.get("index"), "status": fetched["status"]})
             continue
 
         try:
@@ -247,6 +268,8 @@ def sync_etf_groups(repo=None) -> dict:
         with _LOCK:
             sources[gid].update({
                 "report_date": report_date,
+                "index_code": (fetched.get("index") or {}).get("index_code"),
+                "status": fetched["status"],
                 "synced_members": sorted(new_set),
                 "synced_at": _now(),
             })
@@ -254,6 +277,7 @@ def sync_etf_groups(repo=None) -> dict:
         details.append({
             "group": gname, "kind": kind, "symbol": src["symbol"], "changed": True,
             "report_date": report_date,
+            "index": fetched.get("index"), "status": fetched["status"],
             "added": to_add, "removed": to_remove,
         })
         logger.info("etf_group_sync %s(%s %s): +%d / -%d (披露期 %s)",

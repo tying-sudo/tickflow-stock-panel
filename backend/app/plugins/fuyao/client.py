@@ -64,6 +64,17 @@ class FuyaoClient:
             raise FuyaoError(f"扶摇接口错误 code={code}: {payload.get('message', '')} ({path})")
         return payload.get("data") or {}
 
+    # ---- 指数/板块成分 (同花顺) ----
+    def index_constituents(self, thscode: str) -> list[dict]:
+        """单个 THS 指数/板块 (000300.SH / 886042.TI) 当前成分股。
+
+        返回 [{thscode, ticker, name}]。仅当前成分, 无历史调入调出序列。
+        """
+        data = self._get(
+            "/api/a-share-index/constituents/ths-stock-list", {"thscode": thscode}
+        )
+        return list(data.get("item") or [])
+
     # ---- 快照 ----
     def snapshot_page(
         self, limit: int = _SNAPSHOT_PAGE_SIZE, offset: int = 0

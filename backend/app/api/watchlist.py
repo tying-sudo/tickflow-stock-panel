@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 import time
 from datetime import date
 
@@ -12,7 +13,8 @@ from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel
 
 from app.db_safe import is_valid_ext_ident, quote_ident
-from app.services import etf_group_sync, fund_holdings, watchlist
+from app.services import watchlist
+from app.services import fund_holdings
 from app.services.watchlist_ocr import import_watchlist_image
 from app.services.watchlist_ocr.provider import get_ocr_provider
 
@@ -58,6 +60,10 @@ class GroupAssignRequest(BaseModel):
     group_id: str | None = None
 
 
+class EtfGroupRequest(BaseModel):
+    symbol: str
+
+
 def _with_names(rows: list[dict], request: Request) -> list[dict]:
     if not rows:
         return rows
@@ -93,6 +99,119 @@ def add_batch(req: BatchAddRequest, request: Request):
     except ValueError as e:
         raise HTTPException(400, str(e)) from e
     return {"symbols": _with_names(rows, request), "added": added}
+
+
+@router.get("/fund-search")
+def fund_search(code: str = Query(..., description="6 位基金/ETF 代码")):
+    """基金代码联想 (instruments 维表不含场外基金, 前端 instrument 搜索无结果时调用)。"""
+    code = code.strip()
+    try:
+        return fund_holdings.search_fund(code)
+    except fund_holdings.FundHoldingsError as e:
+        raise HTTPException(404, str(e)) from e
+
+
+@router.get("/constituency/judge")
+def constituency_judge(
+    request: Request,
+    symbol: str = Query(..., description="个股/ETF/基金 代码 或 代码.SH|SZ|BJ"),
+    index: str | None = Query(None, description="限定判定的指数代码, 逗号分隔"),
+    refresh: bool = Query(False, description="强制刷新指数成分缓存"),
+):
+    """成分股属性判定 (多数据源): ETF/基金 → 跟踪指数官方成分; 个股 → 多源证据。
+
+    数据源优先级/判定规则/缺失冲突处理见 services/constituency.py 模块文档。
+    """
+    from app.services import constituency
+    codes = [c.strip() for c in index.split(",") if c.strip()] if index else None
+    try:
+        return constituency.judge_symbol(symbol, repo=request.app.state.repo,
+                                         index_codes=codes, refresh=refresh)
+    except constituency.ConstituencyError as e:
+        raise HTTPException(502, str(e)) from e
+
+
+@router.post("/sync-etf-groups")
+def sync_etf_groups_endpoint(request: Request):
+    """手动触发: 全部分组同步到最新口径 (指数官方成分优先, 披露兜底)。"""
+    from app.services import etf_group_sync
+    return etf_group_sync.sync_etf_groups(repo=request.app.state.repo)
+
+
+_ETF_CODE_PREFIXES = ("50", "51", "52", "56", "57", "58", "59", "15", "16", "17", "18")
+
+
+@router.post("/add-etf-group")
+def add_etf_group(req: EtfGroupRequest, request: Request):
+    """添加 ETF/基金 → 以其名称建分组，成分股入组。
+
+    - ETF (如 588710.SH): 最新跟踪指数官方成分入组（严格跟踪，不含 ETF 本体）。
+    - 场外基金代码 (6 位纯数字, 如 001470): 无行情标的, 以基金名建组, 仅成分股入组。
+    分组已存在同名时复用（指数口径可用时成员同步：补缺 + 移出不在口径内的旧成员）。
+    成分股多源合成见 fund_holdings.resolve_holdings。
+    """
+    symbol = req.symbol.strip()
+    repo = request.app.state.repo
+    if re.fullmatch(r"\d{6}", symbol):
+        # 场内 ETF 裸代码 → 指数官方成分口径; 场外基金 → pingzhongdata
+        # 前十大重仓 (全量披露口径会给主动基金带出 100+ 标的, 2026-08-31 回退)
+        try:
+            if symbol.startswith(_ETF_CODE_PREFIXES):
+                info = fund_holdings.resolve_holdings(symbol)
+            else:
+                info = fund_holdings.fetch_fund_holdings(symbol)
+        except fund_holdings.FundHoldingsError as e:
+            raise HTTPException(502, f"获取基金成分股失败: {e}") from e
+        name = info["fund_name"] or symbol
+        members = [h["symbol"] for h in info["holdings"]]
+    else:
+        try:
+            asset = repo.resolve_asset_type(symbol)
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(400, f"无法识别标的类型: {e}") from e
+        if asset != "etf":
+            raise HTTPException(400, f"{symbol} 不是 ETF，仅支持 ETF/基金建成分股分组")
+        try:
+            info = fund_holdings.resolve_holdings(symbol)
+        except fund_holdings.FundHoldingsError as e:
+            raise HTTPException(502, f"获取 ETF 成分股失败: {e}") from e
+        name = repo.get_name_map([symbol]).get(symbol) or info["fund_name"] or symbol
+        # 分组只放成分股, 不含 ETF 本体 (2026-08-31 用户指定)
+        members = [h["symbol"] for h in info["holdings"]]
+    if not members:
+        raise HTTPException(502, "未取到任何成分股数据")
+    groups = watchlist.list_groups()
+    group = next((g for g in groups if g.get("name") == name), None)
+    if group is None:
+        try:
+            groups, group = watchlist.create_group(name)
+        except ValueError as e:
+            raise HTTPException(400, str(e)) from e
+    # add_batch 逐只 insert(0)，倒序传入 → 最终顺序 = ETF 在顶 + 成分股按权重降序
+    rows, added = watchlist.add_batch(list(reversed(members)), note="", group_id=group["id"])
+    # ETF 严格跟踪: 组成员同步到目标集 (补缺 + 移除不在口径内的旧成员)。
+    # 仅在官方指数口径可用时执行; 披露兜底口径只增不删, 避免瞬时故障清空分组。
+    removed: list[str] = []
+    if info.get("index"):
+        target = set(members)
+        current = [
+            r["symbol"] for r in watchlist.list_symbols()
+            if group["id"] in (r.get("group_ids") or [])
+        ]
+        for sym in current:
+            if sym not in target:
+                watchlist.remove_from_group(sym, group["id"])
+                removed.append(sym)
+    return {
+        "group": group,
+        "added": added,
+        "total": len(members),
+        "fund_name": info["fund_name"],
+        "report_date": info["report_date"],
+        "holdings_count": len(info["holdings"]),
+        "index": info.get("index"),
+        "removed": len(removed),
+    }
 
 
 @router.get("/groups")
@@ -278,10 +397,6 @@ _WATCHLIST_COLS = [
 def watchlist_enriched(
     request: Request,
     ext_columns: str | None = Query(None, description="逗号分隔的 ext 列: config_id.field_name"),
-    symbols: str | None = Query(
-        None,
-        description="逗号分隔的 symbol 列表; 提供时以此替代自选列表 (分组成员视图用)",
-    ),
 ):
     """自选股 enriched 数据 — 直接从 enriched 最新日读取, 无即时计算。
 
@@ -291,11 +406,7 @@ def watchlist_enriched(
     t0 = time.perf_counter()
 
     repo = request.app.state.repo
-    if symbols:
-        symbol_list = [s.strip() for s in symbols.split(",") if s.strip()]
-    else:
-        symbol_list = [r["symbol"] for r in watchlist.list_symbols()]
-    symbols = symbol_list
+    symbols = [r["symbol"] for r in watchlist.list_symbols()]
     if not symbols:
         return {"rows": [], "as_of": None, "elapsed_ms": 0}
 
@@ -440,8 +551,12 @@ def watchlist_enriched(
 
 
 def _parse_ext_columns(ext_columns: str) -> list[tuple[str, str]]:
-    """解析 'config_id1.field1,config_id2.field2' 为 [(config_id, field_name), ...]"""
-    result = []
+    """解析 'config_id1.field1,config_id2.field2' 为 [(config_id, field_name), ...]
+
+    去重(保序): 重复列在同名 ext 列 join/select 时会报错(HTTP 500)。
+    """
+    result: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
     for part in ext_columns.split(","):
         part = part.strip()
         if "." not in part:
@@ -450,62 +565,8 @@ def _parse_ext_columns(ext_columns: str) -> list[tuple[str, str]]:
         config_id = config_id.strip()
         field_name = field_name.strip()
         if config_id and field_name and is_valid_ext_ident(config_id):
-            result.append((config_id, field_name))
+            spec = (config_id, field_name)
+            if spec not in seen:
+                seen.add(spec)
+                result.append(spec)
     return result
-
-
-class EtfGroupRequest(BaseModel):
-    symbol: str
-
-
-@router.post("/add-etf-group")
-def add_etf_group(req: EtfGroupRequest, request: Request):
-    """添加 ETF → 以 ETF 名建分组，ETF 本体与最新披露期成分股入组。
-
-    分组已存在同名时复用（补成员不删旧成员）。成分股取天天基金 F10
-    最新报告期股票持仓（半年报/年报为全量披露，季报 top10）。
-    """
-    symbol = req.symbol.strip()
-    repo = request.app.state.repo
-    try:
-        asset = repo.resolve_asset_type(symbol)
-    except Exception as e:  # noqa: BLE001
-        raise HTTPException(400, f"无法识别标的类型: {e}") from e
-    if asset != "etf":
-        raise HTTPException(400, f"{symbol} 不是 ETF，仅支持 ETF 建成分股分组")
-    try:
-        info = fund_holdings.fetch_etf_holdings(symbol)
-    except fund_holdings.FundHoldingsError as e:
-        raise HTTPException(502, f"获取 ETF 成分股失败: {e}") from e
-    name = repo.get_name_map([symbol]).get(symbol) or info["fund_name"] or symbol
-    groups = watchlist.list_groups()
-    group = next((g for g in groups if g.get("name") == name), None)
-    if group is None:
-        try:
-            groups, group = watchlist.create_group(name)
-        except ValueError as e:
-            raise HTTPException(400, str(e)) from e
-    # add_batch 逐只 insert(0)，倒序传入 → 最终顺序 = ETF 在顶 + 成分股按权重降序
-    members = [symbol] + [h["symbol"] for h in info["holdings"]]
-    members = list(dict.fromkeys(members))
-    rows, added = watchlist.add_batch(list(reversed(members)), note="", group_id=group["id"])
-    try:
-        etf_group_sync.record_source(group["id"], symbol, info["report_date"],
-                                     [h["symbol"] for h in info["holdings"]])
-    except Exception as e:  # noqa: BLE001
-        logger.warning("record etf group source failed: %s", e)
-    return {
-        "group": group,
-        "added": added,
-        "total": len(members),
-        "fund_name": info["fund_name"],
-        "report_date": info["report_date"],
-        "holdings_count": len(info["holdings"]),
-    }
-
-
-@router.post("/sync-etf-groups")
-def sync_etf_groups_endpoint(request: Request):
-    """手动触发: 全部 ETF/场外基金成分股分组同步到最新披露期。"""
-    repo = request.app.state.repo
-    return etf_group_sync.sync_etf_groups(repo=repo)

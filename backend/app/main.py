@@ -24,6 +24,8 @@ from app.api import (
     indices,
     intraday,
     kline,
+    depth5_api,
+    tick_download,
     market_recap,
     mining,
     monitor_rules,
@@ -453,6 +455,8 @@ async def auth_middleware(request: Request, call_next):
 app.include_router(core_router)
 app.include_router(auth_api.router)
 app.include_router(kline.router)
+app.include_router(depth5_api.router)
+app.include_router(tick_download.router)
 app.include_router(watchlist.router)
 app.include_router(watchlist_groups.router)
 app.include_router(funds.router)
