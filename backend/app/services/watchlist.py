@@ -130,10 +130,13 @@ def _read_groups() -> list[dict]:
         if not isinstance(item, dict) or not item.get("id") or not item.get("name"):
             continue
         color = str(item.get("color", DEFAULT_GROUP_COLOR))
+        raw_kind = item.get("kind")
         groups.append({
             "id": str(item["id"]),
             "name": str(item["name"]),
             "color": color if color in GROUP_COLORS else DEFAULT_GROUP_COLOR,
+            # 分组类型标记: 'fund'=基金组 (基金自选页归属), None=普通个股组
+            "kind": (str(raw_kind) if raw_kind else None),
         })
     return groups
 
@@ -247,7 +250,7 @@ def list_groups() -> list[dict]:
         return _read_groups()
 
 
-def create_group(name: str, color: str | None = None) -> tuple[list[dict], dict]:
+def create_group(name: str, color: str | None = None, kind: str | None = None) -> tuple[list[dict], dict]:
     with _LOCK:
         normalized = _normalize_group_name(name)
         normalized_color = _normalize_group_color(color)
@@ -258,10 +261,23 @@ def create_group(name: str, color: str | None = None) -> tuple[list[dict], dict]
             "id": uuid.uuid4().hex,
             "name": normalized,
             "color": normalized_color,
+            "kind": kind,
         }
         groups.append(group)
         _write_groups(groups)
         return groups, group
+
+
+def set_group_kind(group_id: str, kind: str | None) -> dict:
+    """设置分组类型标记 (如 'fund')。返回更新后的 group dict。"""
+    with _LOCK:
+        groups = _read_groups()
+        target = next((group for group in groups if group["id"] == group_id), None)
+        if target is None:
+            raise KeyError(group_id)
+        target["kind"] = kind
+        _write_groups(groups)
+        return target
 
 
 def rename_group(group_id: str, name: str, color: str | None = None) -> list[dict]:

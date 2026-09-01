@@ -184,9 +184,12 @@ def add_etf_group(req: EtfGroupRequest, request: Request):
     group = next((g for g in groups if g.get("name") == name), None)
     if group is None:
         try:
-            groups, group = watchlist.create_group(name)
+            groups, group = watchlist.create_group(name, kind="fund")
         except ValueError as e:
             raise HTTPException(400, str(e)) from e
+    elif group.get("kind") != "fund":
+        # 复用同名组 (含历史迁移): 统一标记为基金组, 归属基金自选页
+        group = watchlist.set_group_kind(group["id"], "fund")
     # add_batch 逐只 insert(0)，倒序传入 → 最终顺序 = ETF 在顶 + 成分股按权重降序
     rows, added = watchlist.add_batch(list(reversed(members)), note="", group_id=group["id"])
     # ETF 严格跟踪: 组成员同步到目标集 (补缺 + 移除不在口径内的旧成员)。

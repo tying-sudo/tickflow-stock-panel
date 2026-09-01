@@ -253,8 +253,8 @@ function StockSearchBox({
   const [activeIdx, setActiveIdx] = useState(-1)
 
   const search = useQuery({
-    queryKey: QK.instrumentSearch(query, 'stock,etf,index'),
-    queryFn: () => api.instrumentSearch(query, 20, 'stock,etf,index'),
+    queryKey: QK.instrumentSearch(query, 'etf'),
+    queryFn: () => api.instrumentSearch(query, 20, 'etf'),
     enabled: query.trim().length > 0,
     staleTime: 30_000,
   })
@@ -668,36 +668,9 @@ const StockCard = React.memo(function StockCard({
 // ===== 主页面 =====
 // 基金自选页: 完整复制自选页 (Watchlist.tsx) 源码, 差异点:
 //   1. 默认以分组卡片视图打开 (groupCardsOpen 初始 true)
-//   2. 分组仅显示"基金组" (add-etf-group 建的组, 登记于 localStorage 注册表),
-//      与个股自选页互不相干; 自选页文件保持源仓库原样零改动
-//   3. 搜索结果中的 ETF 添加 = 走 add-etf-group 建成分股组 (个股添加行为不变)
-
-// 基金组注册表: groupId -> 建组元数据 (localStorage, 与旧版基金页共用同一 key)
-const FUND_REGISTRY_KEY = 'fund-watchlist-registry-v1'
-function loadFundGroupIds(): Set<string> {
-  try {
-    const raw = localStorage.getItem(FUND_REGISTRY_KEY)
-    const arr = raw ? JSON.parse(raw) : []
-    return new Set((Array.isArray(arr) ? arr : []).map((c: { groupId?: string }) => c.groupId).filter((id): id is string => Boolean(id)))
-  } catch {
-    return new Set()
-  }
-}
-function registerFundGroup(groupId: string, meta: Record<string, unknown>) {
-  try {
-    const raw = localStorage.getItem(FUND_REGISTRY_KEY)
-    const arr = raw ? JSON.parse(raw) : []
-    const list: Record<string, unknown>[] = Array.isArray(arr) ? arr : []
-    const now = new Date().toISOString()
-    const idx = list.findIndex(c => c.groupId === groupId)
-    const card = { groupId, addedAt: now, syncedAt: now, ...meta }
-    if (idx >= 0) list[idx] = { ...list[idx], ...card }
-    else list.push(card)
-    localStorage.setItem(FUND_REGISTRY_KEY, JSON.stringify(list))
-  } catch {
-    // 注册表写失败不阻断建组 (分组本身已在后端生效)
-  }
-}
+//   2. 分组仅显示基金组 (后端 group.kind === 'fund', add-etf-group 建组时标记),
+//      与个股自选页互不相干 (自选页过滤 kind !== 'fund')
+//   3. 搜索框屏蔽个股: 仅搜索 ETF (type='etf'); ETF 添加 = add-etf-group 建成分股组
 
 export function FundWatchlist() {
   const qc = useQueryClient()
@@ -852,9 +825,8 @@ export function FundWatchlist() {
     queryKey: QK.watchlistGroups,
     queryFn: api.watchlistGroups,
   })
-  // 基金页差异: 只显示基金组 (add-etf-group 建的组), 个股分组归个股自选页
-  const [fundGroupIds, setFundGroupIds] = useState<Set<string>>(() => loadFundGroupIds())
-  const groups = (groupList.data?.groups ?? []).filter(g => fundGroupIds.has(g.id))
+  // 基金页差异: 只显示基金组 (后端 group.kind === 'fund'), 个股分组归个股自选页
+  const groups = (groupList.data?.groups ?? []).filter(g => g.kind === 'fund')
   const activeGroupId = selectedGroup === 'all' || selectedGroup === 'ungrouped'
     ? null
     : selectedGroup
@@ -956,14 +928,6 @@ export function FundWatchlist() {
   const addEtfGroupMutation = useMutation({
     mutationFn: (symbol: string) => api.watchlistAddEtfGroup(symbol),
     onSuccess: (r) => {
-      registerFundGroup(r.group.id, {
-        fundName: r.fund_name,
-        code: r.group.name,
-        reportDate: r.report_date,
-        holdingsCount: r.holdings_count,
-        index: r.index ?? null,
-      })
-      setFundGroupIds(loadFundGroupIds())
       qc.invalidateQueries({ queryKey: QK.watchlist })
       qc.invalidateQueries({ queryKey: QK.watchlistGroups })
       qc.invalidateQueries({ queryKey: ['watchlist-enriched'] })

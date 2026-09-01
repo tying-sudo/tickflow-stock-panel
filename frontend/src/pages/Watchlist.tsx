@@ -800,7 +800,8 @@ export function Watchlist() {
     queryKey: QK.watchlistGroups,
     queryFn: api.watchlistGroups,
   })
-  const groups = groupList.data?.groups ?? []
+  // 个股自选页: 隐藏基金组 (kind='fund', 归属基金自选页管理) — 两个页面职责隔离
+  const groups = (groupList.data?.groups ?? []).filter(g => g.kind !== 'fund')
   const activeGroupId = selectedGroup === 'all' || selectedGroup === 'ungrouped'
     ? null
     : selectedGroup

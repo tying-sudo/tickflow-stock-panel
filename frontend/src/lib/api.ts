@@ -262,6 +262,8 @@ export interface WatchlistGroup {
   id: string
   name: string
   color: WatchlistGroupColor
+  /** 分组类型: 'fund'=基金组 (归属基金自选页), null=普通个股组 */
+  kind?: string | null
 }
 
 /** POST /api/watchlist/add-etf-group 返回 */
