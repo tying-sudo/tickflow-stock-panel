@@ -50,6 +50,7 @@ _TICKDATA_MAX_COUNT = 240
 # ticks (分笔成交): 全天活跃个股可达数千笔, 单独放宽上限; 桥接内部 2000/页分页
 _TICKDATA_MAX_TICKS = 40000
 _TICKDATA_PY = r"C:\TdxGateway\pytdx_bridge.py"
+_TICKDATA_PY_DAEMON = r"C:\TdxGateway\pytdx_daemon.py"
 _TICKDATA_PY_EXE = r"C:\TdxGateway\venv\Scripts\python.exe"
 _TICKDATA_TIMEOUT = 60
 _FIN_MAX_FIELDS = 32
@@ -323,29 +324,87 @@ def _fetch_snapshot(symbol: str) -> dict:
     return result
 
 
-def _run_bridge_job(job: dict) -> dict:
-    """Run the pytdx bridge subprocess and return its parsed JSON payload.
+# ── pytdx 常驻桥 (2026-09-01): 连接复用, 查询 ~50-150ms ─────────────────────
+# 子进程模式每次冷启动 1-3s (连接公共行情服务器), 是面板首开五档 4.3s /
+# 分时成交 6.7s / 单股分钟 6-10s 的元凶, 也让全市场分钟落库慢到不可用。
+# 常驻桥 pytdx_daemon.py 监听 127.0.0.1:18710 (一连接一请求一行 JSON);
+# 不可用时熔断 60s 直接走子进程模式 (慢但对), 并限频 respawn。
+_PYTDX_DAEMON_ADDR = ("127.0.0.1", 18710)
+_DAEMON_TIMEOUT = 60  # ticks 全天翻页最重路径, 与子进程超时对齐
+_daemon_state = {"down_until": 0.0, "last_spawn": 0.0}
 
-    The bridge runs in a short-lived interpreter so a slow or unreachable
-    quote server can never wedge the gateway's request threads; a hard
-    subprocess timeout converts any hang into a clean 502.
-    """
+
+def _ensure_daemon() -> None:
+    """daemon 不在时拉起 (限频 30s); 计划任务 TDX-Pytdx-Daemon 为开机兜底。"""
+    now = time.monotonic()
+    if now < _daemon_state["last_spawn"] + 30:
+        return
+    _daemon_state["last_spawn"] = now
     try:
-        proc = subprocess.run(
-            [_TICKDATA_PY_EXE, _TICKDATA_PY],
-            input=json.dumps(job).encode("utf-8"),
-            capture_output=True,
-            timeout=_TICKDATA_TIMEOUT,
+        subprocess.Popen(
+            [_TICKDATA_PY_EXE, _TICKDATA_PY_DAEMON],
+            creationflags=0x08000000,  # CREATE_NO_WINDOW
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
         )
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(f"bridge subprocess timed out after {_TICKDATA_TIMEOUT}s") from exc
-    if proc.returncode != 0:
-        detail = proc.stderr.decode("utf-8", errors="replace")[-300:]
-        raise RuntimeError(f"bridge subprocess failed: {detail}")
+    except Exception:
+        pass
+
+
+def _daemon_call(job: dict):
+    """调用常驻桥; 不可用返回 None (调用方回退子进程), 并熔断 60s + respawn。"""
+    if time.monotonic() < _daemon_state["down_until"]:
+        return None
     try:
-        return json.loads(proc.stdout.decode("utf-8"))
-    except json.JSONDecodeError as exc:
-        raise RuntimeError("bridge subprocess returned invalid JSON") from exc
+        with socket.create_connection(_PYTDX_DAEMON_ADDR, timeout=3) as sock:
+            sock.settimeout(_DAEMON_TIMEOUT)
+            sock.sendall(json.dumps(job).encode("utf-8") + b"\n")
+            buf = b""
+            while b"\n" not in buf:
+                chunk = sock.recv(1 << 16)
+                if not chunk:
+                    break
+                buf += chunk
+        if not buf.strip():
+            raise RuntimeError("daemon closed connection")
+        payload = json.loads(buf.decode("utf-8"))
+        if not isinstance(payload, dict):
+            raise RuntimeError("daemon returned non-dict payload")
+        return payload
+    except Exception:
+        _daemon_state["down_until"] = time.monotonic() + 60
+        _ensure_daemon()
+        return None
+
+
+def _run_bridge_job(job: dict) -> dict:
+    """Run the pytdx bridge job: daemon first (fast), subprocess fallback.
+
+    The short-lived subprocess mode stays as the safety net so a slow or
+    unreachable quote server can never wedge the gateway; a hard timeout
+    converts any hang into a clean 502.
+    """
+    payload = _daemon_call(job)
+    if payload is None:
+        try:
+            proc = subprocess.run(
+                [_TICKDATA_PY_EXE, _TICKDATA_PY],
+                input=json.dumps(job).encode("utf-8"),
+                capture_output=True,
+                timeout=_TICKDATA_TIMEOUT,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(f"bridge subprocess timed out after {_TICKDATA_TIMEOUT}s") from exc
+        if proc.returncode != 0:
+            detail = proc.stderr.decode("utf-8", errors="replace")[-300:]
+            raise RuntimeError(f"bridge subprocess failed: {detail}")
+        try:
+            payload = json.loads(proc.stdout.decode("utf-8"))
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("bridge subprocess returned invalid JSON") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError("bridge returned non-dict payload")
+    return payload
 
 
 def _tickdata_rows(symbols: list[str], kind: str, count: int, date_arg: str | None = None) -> dict:
