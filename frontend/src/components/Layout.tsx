@@ -23,6 +23,7 @@ import { QK } from '@/lib/queryKeys'
 import {
   Siren,
   Star,
+  Coins,
   ScanSearch,
   History,
   Pickaxe,
@@ -78,6 +79,7 @@ type CoreIndex = (typeof CORE_INDEXES)[number]
 const nav = [
   { to: '/',                label: '看板',     icon: LayoutDashboard },
   { to: '/watchlist',  label: '自选',   icon: Star },
+  { to: '/fund-watchlist', label: '基金自选', icon: Coins },
   { to: '/screener',   label: '策略',   icon: ScanSearch },
   { to: '/backtest',   label: '回测', icon: History },
   { to: '/mining',     label: '挖掘', icon: Pickaxe },

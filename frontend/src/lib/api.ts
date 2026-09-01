@@ -264,6 +264,25 @@ export interface WatchlistGroup {
   color: WatchlistGroupColor
 }
 
+/** POST /api/watchlist/add-etf-group 返回 */
+export interface EtfGroupAddResult {
+  group: WatchlistGroup
+  added: number
+  total: number
+  fund_name: string
+  report_date: string
+  holdings_count: number
+  index?: string | null
+  removed: number
+}
+
+/** GET /api/watchlist/fund-search 返回 (天天基金搜索) */
+export interface FundSearchResult {
+  code: string
+  name: string
+  fund_type?: string | null
+}
+
 export interface WatchlistImportCandidate {
   code: string
   symbol: string | null
@@ -2212,6 +2231,18 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ symbols, note, group_id: groupId ?? null }),
     }),
+  /** ETF/基金 → 以其名称建分组, 成分股入组 (不含 ETF 本体)。symbol: 场内 ETF 带后缀或 6 位基金代码。 */
+  watchlistAddEtfGroup: (symbol: string) =>
+    request<EtfGroupAddResult>('/api/watchlist/add-etf-group', {
+      method: 'POST',
+      body: JSON.stringify({ symbol }),
+    }),
+  /** 全部 ETF 分组同步到最新口径 (指数官方成分优先, 披露兜底)。 */
+  watchlistSyncEtfGroups: () =>
+    request<Record<string, unknown>>('/api/watchlist/sync-etf-groups', { method: 'POST' }),
+  /** 6 位基金/ETF 代码联想 (instruments 维表不含场外基金)。 */
+  watchlistFundSearch: (code: string) =>
+    request<FundSearchResult>(`/api/watchlist/fund-search?code=${encodeURIComponent(code)}`),
   watchlistGroups: () =>
     request<{ groups: WatchlistGroup[] }>('/api/watchlist/groups'),
   watchlistGroupCreate: (name: string, color: WatchlistGroupColor) =>
@@ -2572,6 +2603,8 @@ export const api = {
   dataClear: () => request<{ deleted_files: number }>('/api/data/clear', { method: 'POST' }),
   depth5: (symbol: string) =>
     request<Depth5Snapshot>(`/api/intraday/depth5?symbol=${encodeURIComponent(symbol)}`, { quiet: true }),
+  transactions: (symbol: string) =>
+    request<TransactionsSnapshot>(`/api/kline/transactions?symbol=${encodeURIComponent(symbol)}`, { quiet: true }),
   fundSync: () => request<{ started: boolean; running: boolean }>('/api/data/funds/sync', { method: 'POST' }),
   fundSyncStatus: () => request<FundSyncStatus>('/api/data/funds/status'),
   refreshCache: () => request<{ ok: boolean }>('/api/data/refresh-cache', { method: 'POST' }),
@@ -3331,6 +3364,30 @@ export interface Depth5Snapshot {
   ts: number | null
   /** 数据源: tdx_gateway | tickflow */
   source?: string
+}
+
+/** 单笔分笔成交 (TDX 分笔协议, 最近交易日; 时间分钟级) */
+export interface TickTrade {
+  /** HH:MM */
+  time: string
+  price: number
+  /** 成交量 (手) */
+  volume: number
+  /** 笔数 (0 = 数据源无此字段, 如 g4tic 历史包) */
+  num: number
+  /** buy 买盘 | sell 卖盘 | neutral 中性盘 | auction 竞价 | after_hours 盘后 | other 无方向 */
+  direction: string
+}
+
+export interface TransactionsSnapshot {
+  symbol: string
+  name: string | null
+  /** 分笔所属交易日 (ISO) */
+  date: string | null
+  /** tdx_gateway_ticks | tdx_g4tic_pack */
+  source: string
+  tick_count: number
+  ticks: TickTrade[]
 }
 
 export interface FundStats {

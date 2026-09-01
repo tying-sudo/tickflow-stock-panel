@@ -9,6 +9,7 @@ import { cnSignal } from '@/lib/signals'
 import { fmtPct } from '@/lib/format'
 import { StockPanel, getDefaultRange } from '@/components/StockPanel'
 import { Depth5Panel } from '@/components/Depth5Panel'
+import { TickTransactionsPanel } from '@/components/TickTransactionsPanel'
 import { WatchlistAddMenu } from '@/components/WatchlistAddMenu'
 import { StockMultiDayIntradayChart } from '@/components/StockMultiDayIntradayChart'
 import { DatePicker } from '@/components/DatePicker'
@@ -44,6 +45,8 @@ const PRESETS: { label: string; months: number }[] = [
 ]
 
 type PreviewView = 'daily' | 'intraday'
+// 分时成交轮询节奏: 0.5s 全量拉当日分笔 (用户指定实盘节奏; 与分时图/五档的偏好间隔解耦)
+const TX_REFETCH_INTERVAL_MS = 500
 interface PriceAlertDraft {
   id: number
   targetPrice: number
@@ -484,19 +487,30 @@ export function StockPreviewDialog({ symbol, name, onClose, triggerInfo }: Props
             {/* 图表内容 */}
             <div className="flex-1 overflow-auto p-4">
               {view === 'daily' ? (
+                /* 通达信复盘布局: [日K | 分时图+五档盘口(横排,下) | 分时成交(右)] */
                 <StockPanel
                   symbol={symbol}
-                  height={420}
+                  height={480}
                   showIntraday
                   dateRange={dateRange}
                   priceLines={monitorPriceLines}
                   onPriceDoubleClick={openPriceAlert}
                   refetchIntervalMs={intradayRefetchMs}
+                  intradayBottom={{
+                    height: 180,
+                    node: (
+                      <Depth5Panel
+                        symbol={symbol}
+                        height={180}
+                        refetchIntervalMs={intradayRefetchMs}
+                      />
+                    ),
+                  }}
                   rightPanel={
-                    <Depth5Panel
+                    <TickTransactionsPanel
                       symbol={symbol}
-                      height={420}
-                      refetchIntervalMs={intradayRefetchMs}
+                      height={480}
+                      refetchIntervalMs={TX_REFETCH_INTERVAL_MS}
                     />
                   }
                 />
@@ -518,11 +532,16 @@ export function StockPreviewDialog({ symbol, name, onClose, triggerInfo }: Props
                       onPriceDoubleClick={openPriceAlert}
                     />
                   </div>
-                  <div className="w-60 shrink-0">
+                  <div className="flex w-64 shrink-0 flex-col gap-3">
                     <Depth5Panel
                       symbol={symbol}
-                      height={480}
+                      height={252}
                       refetchIntervalMs={intradayRefetchMs}
+                    />
+                    <TickTransactionsPanel
+                      symbol={symbol}
+                      height={216}
+                      refetchIntervalMs={TX_REFETCH_INTERVAL_MS}
                     />
                   </div>
                 </div>

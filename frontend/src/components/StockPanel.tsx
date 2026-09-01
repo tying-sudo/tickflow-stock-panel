@@ -40,8 +40,10 @@ interface Props {
   refetchIntervalMs?: number
   /** 只渲染信息条, 隐藏图表 (用于分时 tab 共享信息条) */
   infoBarOnly?: boolean
-  /** 第三列面板 (如五档盘口详情), 渲染在分时图右侧; 传入后布局变为 [日K | 分时 | 面板] */
+  /** 第三列面板 (如分时成交), 渲染在分时图右侧; 传入后布局变为 [日K | 分时 | 面板] */
   rightPanel?: React.ReactNode
+  /** 分时图下方插槽 (如五档盘口横排); height 为该插槽固定像素高度, 分时图自动让位 */
+  intradayBottom?: { node: React.ReactNode; height: number }
 }
 
 export { getDefaultRange }
@@ -67,6 +69,7 @@ export function StockPanel({
   refetchIntervalMs,
   infoBarOnly = false,
   rightPanel,
+  intradayBottom,
 }: Props) {
   const [linkedPrice, setLinkedPrice] = useState<number | null>(null)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
@@ -153,7 +156,7 @@ export function StockPanel({
       />
 
       {infoBarOnly ? null : (
-      <div className={rightPanel ? 'grid grid-cols-[1fr_1fr_14rem] gap-3 items-start' : 'grid grid-cols-2 gap-3 items-start'}>
+      <div className={rightPanel ? 'grid grid-cols-[1fr_1fr_16rem] gap-3 items-start' : 'grid grid-cols-2 gap-3 items-start'}>
         <StockDailyKChart
           symbol={symbol}
           height={height}
@@ -174,7 +177,7 @@ export function StockPanel({
         />
 
         {showIntraday && selectedDate && !intradayDismissed ? (
-          <div className="relative min-w-0 border-l border-border pl-3">
+          <div className="relative flex min-w-0 flex-col border-l border-border pl-3">
             <button
               onClick={() => setIntradayDismissed(true)}
               className="absolute -left-1.5 -top-1.5 z-10 flex h-5 w-5 items-center justify-center rounded-full border border-border bg-surface text-muted shadow-sm transition-colors hover:text-foreground hover:bg-elevated"
@@ -186,7 +189,7 @@ export function StockPanel({
             <StockIntradayChart
               symbol={symbol}
               date={selectedDate}
-              height={height}
+              height={intradayBottom ? Math.max(200, height - intradayBottom.height - 12) : height}
               prevClose={prevClose}
               onPriceHover={setLinkedPrice}
               onPriceDoubleClick={onPriceDoubleClick}
@@ -194,6 +197,11 @@ export function StockPanel({
               priceLines={priceLines}
               refetchIntervalMs={refetchIntervalMs}
             />
+            {intradayBottom && (
+              <div className="mt-3 shrink-0" style={{ height: intradayBottom.height }}>
+                {intradayBottom.node}
+              </div>
+            )}
           </div>
         ) : (
           <div className="min-w-0" />
