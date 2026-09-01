@@ -53,6 +53,7 @@ const DATASET_LABEL: Record<string, string> = {
   depth5: '五档',
   financial: '财务',
   full_minute: '全量分钟',
+  tick: '分时成交',
 }
 
 /** 能力图标 (纯展示; 能力清单本身由后端注册表驱动) */
@@ -63,6 +64,7 @@ const CAP_ICON: Record<string, React.ComponentType<{ className?: string }>> = {
   full_minute: Zap,
   adj_factor: Scale,
   financial: Landmark,
+  tick: ListChecks,
 }
 
 /** TickFlow 档位要求文本: none → 全档位, 其余 → starter+ 形式 */

@@ -70,6 +70,15 @@ CAPABILITY_REGISTRY: list[dict] = [
         # 插件契约暂未开放 depth5 数据集 (loader 白名单), 当前仅 TickFlow 供
     },
     {
+        "id": "tick",
+        "label": "分时成交",
+        "desc": "当日分笔明细 (TDX 分笔协议, 最近交易日, 含竞价/盘后段)",
+        "field": None,
+        "default": "tdx_gateway",
+        "tf_tier": "expert",
+        # TickFlow 无分笔能力; 仅 tdx_gateway 提供 (2026-09-01 点亮), 不可路由
+    },
+    {
         "id": "financial",
         "label": "财务数据",
         "desc": "财务指标与三大报表",
@@ -80,12 +89,12 @@ CAPABILITY_REGISTRY: list[dict] = [
     {
         "id": "full_minute",
         "label": "全量分钟",
-        "desc": "盘中全市场当日分钟落盘 (冷启动全天 + 标的池增量)",
+        "desc": "盘中全市场当日分钟落盘 (本地 T+0 管道: 16:30 全量冷启动 + 盘中标的池增量)",
         "field": None,
-        "default": "tickflow",
+        "default": "tdx_gateway",
         "tf_tier": "expert",
-        # intraday.universe 能力 (TickFlow Expert 专有): 插件契约不开放此数据集,
-        # 生效源恒为 TickFlow — 不可路由, 无对应 provider 偏好字段
+        # 原 TickFlow Expert 专有 (intraday.universe); 2026-09-01 本地 tdx_gateway
+        # T+0 管道 (t0_minute_backfill + 标的池增量) 实现同等能力, 点亮为 tdx_gateway
     },
 ]
 

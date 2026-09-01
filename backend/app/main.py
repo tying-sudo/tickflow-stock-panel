@@ -8,6 +8,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -169,6 +170,39 @@ async def _application_lifespan(app: FastAPI):
     except Exception as e:  # noqa: BLE001
         logger.warning("scheduler not started: %s", e)
         app.state.scheduler = None
+
+    # 盘前自动开实时行情 (09:08-09:20 交易日窗口, 2026-09-01 用户确认实施):
+    # 工作日早晨窗口内检测到开关未开且允许开启(档位/无暂停) → 自动打开 +
+    # 联动 depth 盘中轮询, 看板/监控开盘即归位当日。节假日误开无害
+    # (静态快照, Now=0 被过滤)。
+    import threading as _threading
+
+    def _preopen_realtime_watch() -> None:
+        import time as _time
+
+        from app.market_time import cn_now
+        from app.services import preferences
+
+        while True:
+            try:
+                now = cn_now()
+                if now.weekday() < 5 and now.hour == 9 and 8 <= now.minute < 20:
+                    if not preferences.get_realtime_quotes_enabled():
+                        qs2 = getattr(app.state, "quote_service", None)
+                        if qs2 and qs2.is_realtime_allowed() and not qs2.is_paused():
+                            preferences.save({"realtime_quotes_enabled": True})
+                            qs2.enable()
+                            ds = getattr(app.state, "depth_service", None)
+                            if ds:
+                                ds.start_polling()
+                            logger.warning(
+                                "preopen: 实时行情已自动开启 (%02d:%02d)", now.hour, now.minute
+                            )
+            except Exception as e:  # noqa: BLE001
+                logger.debug("preopen realtime watch error: %s", e)
+            _time.sleep(30)
+
+    _threading.Thread(target=_preopen_realtime_watch, daemon=True, name="preopen-realtime").start()
 
     # depth sealed: 启动补跑(当天文件不存在) + 盘中轮询(有能力时)
     try:
@@ -404,6 +438,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# GZip: 分笔明细/分钟区间等大 JSON 响应压缩 5-10× (局域网 ~600KB → ~80KB),
+# 前端 fetch 默认带 Accept-Encoding: gzip, 无感知加速。
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 
 # ================================================================
