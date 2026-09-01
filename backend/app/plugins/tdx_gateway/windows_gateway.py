@@ -70,7 +70,7 @@ class GatewayHandler(BaseHTTPRequestHandler):
         self._write(HTTPStatus.OK if reachable else HTTPStatus.SERVICE_UNAVAILABLE, {"ok": reachable, "tdx_url": TDX_URL})
 
     def do_POST(self) -> None:
-        if self.path not in {"/v1/kline", "/v1/realtime", "/v1/tickdata", "/v1/financials", "/v1/g4dl"}:
+        if self.path not in {"/v1/kline", "/v1/realtime", "/v1/tickdata", "/v1/financials", "/v1/g4dl", "/v1/quotes"}:
             self._write(HTTPStatus.NOT_FOUND, {"error": "not found"})
             return
         if not self._authorized():
@@ -203,6 +203,14 @@ class GatewayHandler(BaseHTTPRequestHandler):
                 self._write(HTTPStatus.OK, {"rows": rows})
                 return
 
+            if self.path == "/v1/quotes":
+                # 批量五档盘口 via pytdx (公共行情服务器): TdxW 快照盘口是客户端
+                # UI 缓存刮削, 只有客户端正在显示的标的才有完整档位 (2026-09-01
+                # 实测), 本通道与客户端显示状态无关, 供插件侧兜底。
+                rows = _quotes_rows(symbols)
+                self._write(HTTPStatus.OK, {"rows": rows})
+                return
+
             if self.path == "/v1/realtime":
                 with ThreadPoolExecutor(max_workers=min(TDX_WORKERS, len(symbols))) as executor:
                     futures = {symbol: executor.submit(_fetch_snapshot, symbol) for symbol in symbols}
@@ -315,39 +323,58 @@ def _fetch_snapshot(symbol: str) -> dict:
     return result
 
 
-def _tickdata_rows(symbols: list[str], kind: str, count: int, date_arg: str | None = None) -> dict:
-    """Fetch recent intraday bars/ticks via the pytdx bridge subprocess.
+def _run_bridge_job(job: dict) -> dict:
+    """Run the pytdx bridge subprocess and return its parsed JSON payload.
 
     The bridge runs in a short-lived interpreter so a slow or unreachable
     quote server can never wedge the gateway's request threads; a hard
     subprocess timeout converts any hang into a clean 502.
-    date_arg (YYYYMMDD, optional): kind=ticks 时取指定交易日的分笔成交;
-    缺省为当日分笔。
     """
-    job: dict = {"symbols": symbols, "kind": kind, "count": count}
-    if date_arg:
-        job["date"] = date_arg
-    job = json.dumps(job)
     try:
         proc = subprocess.run(
             [_TICKDATA_PY_EXE, _TICKDATA_PY],
-            input=job.encode("utf-8"),
+            input=json.dumps(job).encode("utf-8"),
             capture_output=True,
             timeout=_TICKDATA_TIMEOUT,
         )
     except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(f"tickdata subprocess timed out after {_TICKDATA_TIMEOUT}s") from exc
+        raise RuntimeError(f"bridge subprocess timed out after {_TICKDATA_TIMEOUT}s") from exc
     if proc.returncode != 0:
         detail = proc.stderr.decode("utf-8", errors="replace")[-300:]
-        raise RuntimeError(f"tickdata subprocess failed: {detail}")
+        raise RuntimeError(f"bridge subprocess failed: {detail}")
     try:
-        payload = json.loads(proc.stdout.decode("utf-8"))
+        return json.loads(proc.stdout.decode("utf-8"))
     except json.JSONDecodeError as exc:
-        raise RuntimeError("tickdata subprocess returned invalid JSON") from exc
-    rows = payload.get("rows")
+        raise RuntimeError("bridge subprocess returned invalid JSON") from exc
+
+
+def _tickdata_rows(symbols: list[str], kind: str, count: int, date_arg: str | None = None) -> dict:
+    """Fetch recent intraday bars/ticks via the pytdx bridge subprocess.
+
+    date_arg (YYYYMMDD, optional): kind=ticks 时取指定交易日的分笔成交;
+    缺省为当日分笔。行形状: list[dict]。
+    """
+    job: dict = {"symbols": symbols, "kind": kind, "count": count}
+    if date_arg:
+        job["date"] = date_arg
+    rows = _run_bridge_job(job).get("rows")
     if not isinstance(rows, dict):
         raise RuntimeError("tickdata subprocess returned no rows map")
     return {str(key): list(value or []) for key, value in rows.items()}
+
+
+def _quotes_rows(symbols: list[str]) -> dict:
+    """批量五档盘口 via pytdx bridge (kind=quotes, 公共行情服务器)。
+
+    TdxW Quant 快照的盘口是客户端 UI 缓存刮削品 — 只有客户端正在显示的标的
+    才有完整档位 (2026-09-01 实测), 本通道与客户端显示状态无关。
+    行形状: per-symbol dict (bid1..5/bid_vol1..5/ask1..5/ask_vol1..5/price/
+    last_close), 与 tickdata 的 list-of-rows 不同, 勿混用。
+    """
+    rows = _run_bridge_job({"symbols": symbols, "kind": "quotes", "count": 0}).get("rows")
+    if not isinstance(rows, dict):
+        raise RuntimeError("quotes subprocess returned no rows map")
+    return rows
 
 
 # ── g4tic 历史分笔 (通达信官方全市场分笔打包; 普及版会员数据通道) ─────────

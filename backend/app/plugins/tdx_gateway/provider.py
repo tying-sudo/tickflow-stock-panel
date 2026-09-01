@@ -192,6 +192,19 @@ class _GatewayClient:
             raise TdxGatewayError("TDX gateway returned no realtime rows map")
         return {str(symbol): value for symbol, value in rows.items() if isinstance(value, dict)}
 
+    def quotes(self, symbols: list[str]) -> dict[str, dict[str, Any]]:
+        """五档盘口 via the gateway's pytdx sidecar (公共行情服务器)。
+
+        TdxW Quant 快照的盘口是客户端 UI 缓存刮削品 — 只有客户端正在显示的
+        标的才有完整档位 (2026-09-01 实测); 本通道与客户端显示状态无关,
+        作为 get_depth5 的兜底源。旧版网关对该路径 404, 调用方保留 TdxW 部分档位。
+        """
+        payload = self._request("POST", "/v1/quotes", {"symbols": symbols})
+        rows = payload.get("rows")
+        if not isinstance(rows, dict):
+            raise TdxGatewayError("TDX gateway returned no quotes rows map")
+        return {str(symbol): value for symbol, value in rows.items() if isinstance(value, dict)}
+
     def tickdata(self, symbols: list[str], *, kind: str = "bars", count: int = 240) -> dict[str, list[dict[str, Any]]]:
         """Recent intraday bars/ticks via the gateway's pytdx sidecar.
 
@@ -537,6 +550,7 @@ class TdxGatewayProvider:
         for part in chunked(symbols, _BATCH):
             # 与 get_realtime 同源风险: 批内坏标的会让网关整批 502, 同样二分容错
             snapshots = self._realtime_snapshot_tolerant(list(part))
+            incomplete: list[str] = []
             for symbol in part:
                 snapshot = snapshots.get(symbol)
                 if not snapshot:
@@ -557,14 +571,47 @@ class TdxGatewayProvider:
                         "timestamp": fetched_ms,
                     }
                     continue
+                bid_prices = _depth_levels(snapshot.get("Buyp"))
+                ask_prices = _depth_levels(snapshot.get("Sellp"))
                 result[symbol] = {
-                    "ask_prices": _depth_levels(snapshot.get("Sellp")),
+                    "ask_prices": ask_prices,
                     "ask_volumes": _depth_levels(snapshot.get("Sellv"), integer=True),
-                    "bid_prices": _depth_levels(snapshot.get("Buyp")),
+                    "bid_prices": bid_prices,
                     "bid_volumes": _depth_levels(snapshot.get("Buyv"), integer=True),
                     "timestamp": fetched_ms,
                 }
+                # TdxW 盘口 = 客户端 UI 缓存刮削品: 只有客户端正在显示的标的才有
+                # 完整档位 (2026-09-01 实测, 未显示标的 2-5 档被客户端清空)。
+                # 档位不全 → pytdx 公共行情五档整体兜底 (单源原子, 不跨源拼盘)。
+                # 注意 _depth_levels 保留零占位 (数组恒 5 元素), 必须数正数档位。
+                if sum(1 for p in bid_prices if p > 0) < 5 or sum(1 for p in ask_prices if p > 0) < 5:
+                    incomplete.append(symbol)
+            if incomplete:
+                self._fill_book_from_quotes(incomplete, result, fetched_ms)
         return result
+
+    def _fill_book_from_quotes(
+        self,
+        symbols: list[str],
+        result: dict[str, dict[str, Any]],
+        fetched_ms: int,
+    ) -> None:
+        """TdxW 档位不全的标的用 pytdx quotes 整体替换 (宁全勿缺, 假数据仍拦)。"""
+        try:
+            quotes = self._client().quotes(symbols)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("depth5 quotes fallback unavailable (%s): %s", symbols, e)
+            return
+        for symbol in symbols:
+            q = quotes.get(symbol)
+            if not q or "error" in q:
+                continue
+            book = _book_from_quote(q, fetched_ms)
+            if book is None:
+                logger.info("depth5 %s: pytdx quotes book stale/empty — keeping TdxW partial", symbol)
+                continue
+            logger.info("depth5 %s: TdxW book incomplete — filled from pytdx quotes", symbol)
+            result[symbol] = book
 
     def get_financials(
         self,
@@ -881,6 +928,54 @@ def _book_inconsistent_with_last(snapshot: dict[str, Any]) -> bool:
     if ask1 and abs(ask1 - now) > tol:
         return True
     return False
+
+
+def _quote_levels(q: dict[str, Any], side: str) -> list[float]:
+    """pytdx quotes 的 bid1..5 / ask1..5 过滤零值 (买1→买5 / 卖1→卖5 原序)。"""
+    out: list[float] = []
+    for i in range(1, 6):
+        number = _number(q.get(f"{side}{i}"))
+        if number is not None and number > 0:
+            out.append(float(number))
+    return out
+
+
+def _quote_volumes(q: dict[str, Any], side: str) -> list[int]:
+    """与 _quote_levels 同下标配对的手数 (档位价>0 才计入)。"""
+    out: list[int] = []
+    for i in range(1, 6):
+        price = _number(q.get(f"{side}{i}"))
+        if price is None or price <= 0:
+            continue
+        try:
+            out.append(int(float(q.get(f"{side}_vol{i}") or 0)))
+        except (TypeError, ValueError):
+            out.append(0)
+    return out
+
+
+def _book_from_quote(q: dict[str, Any], fetched_ms: int) -> dict[str, Any] | None:
+    """pytdx quotes → depth5 契约; 最优档与成交价偏差 >0.5% 判陈旧丢弃。
+
+    返回 None = 该 pytdx 快照为空 (停牌/退市) 或自相矛盾 — 调用方保留
+    TdxW 部分档位 (或已拦截的空档), 绝不用可疑数据整体替换。
+    """
+    bid_prices = _quote_levels(q, "bid")
+    ask_prices = _quote_levels(q, "ask")
+    if not bid_prices and not ask_prices:
+        return None
+    price = _number(q.get("price")) or 0
+    if price > 0 and bid_prices and ask_prices:
+        tol = price * _DEPTH_TOLERANCE
+        if abs(bid_prices[0] - price) > tol or abs(ask_prices[0] - price) > tol:
+            return None
+    return {
+        "ask_prices": ask_prices,
+        "ask_volumes": _quote_volumes(q, "ask"),
+        "bid_prices": bid_prices,
+        "bid_volumes": _quote_volumes(q, "bid"),
+        "timestamp": fetched_ms,
+    }
 
 
 def _forward_factor_event_dates(rows: list[dict[str, Any]]) -> list[datetime.date]:
