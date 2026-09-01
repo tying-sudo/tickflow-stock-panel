@@ -931,21 +931,26 @@ def _book_inconsistent_with_last(snapshot: dict[str, Any]) -> bool:
 
 
 def _quote_levels(q: dict[str, Any], side: str) -> list[float]:
-    """pytdx quotes 的 bid1..5 / ask1..5 过滤零值 (买1→买5 / 卖1→卖5 原序)。"""
+    """pytdx quotes 的 bid1..5 / ask1..5 原序原值, 保留零占位。
+
+    与 TdxW 快照同语义: 封死一侧全 0 (涨停无卖盘)。depth_service 的 sealed
+    判定依赖 ask_volumes[0]==0 / bid_volumes[0]==0, 过滤零会把真封板变成
+    "未判定" (2026-09-01); 展示端按 price>0 过滤, 零占位不影响 UI。
+    """
     out: list[float] = []
     for i in range(1, 6):
         number = _number(q.get(f"{side}{i}"))
-        if number is not None and number > 0:
-            out.append(float(number))
+        out.append(float(number) if number is not None and number > 0 else 0.0)
     return out
 
 
 def _quote_volumes(q: dict[str, Any], side: str) -> list[int]:
-    """与 _quote_levels 同下标配对的手数 (档位价>0 才计入)。"""
+    """与 _quote_levels 同下标配对的手数 (零价档位量记 0)。"""
     out: list[int] = []
     for i in range(1, 6):
         price = _number(q.get(f"{side}{i}"))
         if price is None or price <= 0:
+            out.append(0)
             continue
         try:
             out.append(int(float(q.get(f"{side}_vol{i}") or 0)))
@@ -955,19 +960,24 @@ def _quote_volumes(q: dict[str, Any], side: str) -> list[int]:
 
 
 def _book_from_quote(q: dict[str, Any], fetched_ms: int) -> dict[str, Any] | None:
-    """pytdx quotes → depth5 契约; 最优档与成交价偏差 >0.5% 判陈旧丢弃。
+    """pytdx quotes → depth5 契约; 最优正数档与成交价偏差 >0.5% 判陈旧丢弃。
 
     返回 None = 该 pytdx 快照为空 (停牌/退市) 或自相矛盾 — 调用方保留
     TdxW 部分档位 (或已拦截的空档), 绝不用可疑数据整体替换。
     """
     bid_prices = _quote_levels(q, "bid")
     ask_prices = _quote_levels(q, "ask")
-    if not bid_prices and not ask_prices:
+    if not any(bid_prices) and not any(ask_prices):
         return None
     price = _number(q.get("price")) or 0
-    if price > 0 and bid_prices and ask_prices:
+    if price > 0:
         tol = price * _DEPTH_TOLERANCE
-        if abs(bid_prices[0] - price) > tol or abs(ask_prices[0] - price) > tol:
+        # 只校验正数最优档: 封死一侧 (全 0) 无档可对, 天然合法
+        bid1 = next((p for p in bid_prices if p > 0), 0.0)
+        ask1 = next((p for p in ask_prices if p > 0), 0.0)
+        if bid1 and abs(bid1 - price) > tol:
+            return None
+        if ask1 and abs(ask1 - price) > tol:
             return None
     return {
         "ask_prices": ask_prices,

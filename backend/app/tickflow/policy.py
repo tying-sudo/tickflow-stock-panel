@@ -305,12 +305,17 @@ def detect_capabilities(force: bool = False) -> CapabilitySet:
 
 # 数据集 → 能力映射: 第三方源声明某数据集且被选为当前 provider 时补授的能力。
 # 实时行情无对应能力键 (权限由 QuoteService.is_realtime_allowed 判定);
-# 五档盘口/WebSocket 暂无第三方数据集契约, 不增广。
+# WebSocket 暂无第三方数据集契约, 不增广。
 _DATASET_CAP_MAP: tuple[tuple[str, Cap], ...] = (
     ("daily", Cap.KLINE_DAILY_BATCH),
     ("adj_factor", Cap.ADJ_FACTOR),
     ("minute", Cap.KLINE_MINUTE_BATCH),
     ("financial", Cap.FINANCIAL),
+    # 五档盘口: tdx_gateway 声明 depth5 数据集 (plugin.yaml / provider._DATASETS),
+    # 双源架构 (TdxW 快照 + pytdx quotes 兜底) 后真实可供 → 单只/批量一并补授,
+    # 解锁前端 hasDepth 徽标、连板梯队封单监控与 depth_service sealed 修正链。
+    ("depth5", Cap.DEPTH5),
+    ("depth5", Cap.DEPTH5_BATCH),
 )
 
 
@@ -327,6 +332,7 @@ def _augment_custom_sources(capset: CapabilitySet) -> None:
             "adj_factor": adj_provider,
             "minute": preferences.get_minute_data_provider(),
             "financial": preferences.get_financial_provider(),
+            "depth5": preferences.get_depth5_data_provider(),
         }
         for dataset, cap in _DATASET_CAP_MAP:
             provider = active_providers[dataset]

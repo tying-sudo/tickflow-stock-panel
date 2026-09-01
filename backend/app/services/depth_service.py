@@ -292,7 +292,28 @@ class DepthService:
             self._persist(enriched_date)
 
     def _call_depth_batch(self, symbols: list[str]) -> dict:
-        """调 tf.depth.batch, 按 capset 的 batch 切片 + 节流。返回 {symbol: MarketDepth}。"""
+        """按 depth5 provider 分流拉盘口, 返回 {symbol: MarketDepth}。
+
+        - tdx_gateway: TdxGatewayProvider.get_depth5 (内部 40 只/批 + TdxW/pytdx
+          双源容错), LAN 直连无限速; 失败记 warning 返回空, 本轮跳过 (轮询线程
+          下轮重试), 不静默回落 TickFlow — Free 档调用必 403, 只会刷错误日志。
+        - tickflow: tf.depth.batch 按 capset 的 batch 切片 + 节流。
+        """
+        from app.services import preferences
+
+        if preferences.get_depth5_data_provider() == "tdx_gateway":
+            from app.plugins.tdx_gateway import provider as tdx_provider
+
+            ok, reason = tdx_provider.availability()
+            if not ok:
+                logger.warning("depth sealed: tdx_gateway 不可用(%s), 本轮跳过", reason)
+                return {}
+            try:
+                return tdx_provider.TdxGatewayProvider().get_depth5(symbols)
+            except Exception as e:  # noqa: BLE001
+                logger.warning("depth sealed: tdx_gateway 拉取失败, 本轮跳过: %s", e)
+                return {}
+
         from app.tickflow.client import get_client
         tf = get_client()
 
