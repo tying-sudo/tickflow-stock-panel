@@ -1006,6 +1006,21 @@ export function EChartsCandlestick({
       }
     })
 
+    // 任意区域点击选日: 点 K 线柱间的空白/坐标轴附近也能按 x 坐标映射到最近交易日
+    // (用户指定: 不必精确点中蜡烛柱; convertFromPixel 走 dataZoom 当前窗口)
+    chart.getZr().on('click', (e: any) => {
+      if (e.target && e.target.__ecComponentInfo) return // 命中 series 元素时交给上面的 chart.on 分支
+      const pixel: [number, number] = [e.offsetX, e.offsetY]
+      if (!chart.containPixel({ gridIndex: 0 }, pixel)) return
+      const d = dataRef.current
+      if (!d.length) return
+      const x = chart.convertFromPixel({ xAxisIndex: 0 }, pixel)
+      const raw = Array.isArray(x) ? Number(x[0]) : NaN
+      if (!Number.isFinite(raw)) return
+      const idx = Math.max(0, Math.min(d.length - 1, Math.round(raw)))
+      onDateClickRef.current?.(d[idx].date)
+    })
+
     const handlePriceDoubleClick = (event: { offsetX: number; offsetY: number }) => {
       const pixel: [number, number] = [event.offsetX, event.offsetY]
       if (!chart.containPixel({ gridIndex: 0 }, pixel)) return
