@@ -261,6 +261,17 @@ function StockSearchBox({
 
   const results = search.data?.results ?? []
 
+  // 基金页差异: 6 位纯数字 → 场外基金联想 (天天基金, instruments 维表里没有)
+  const trimmed = query.trim()
+  const fundLookup = useQuery({
+    queryKey: ['fund-search', trimmed],
+    queryFn: () => api.watchlistFundSearch(trimmed),
+    enabled: /^\d{6}$/.test(trimmed),
+    staleTime: 60_000,
+    retry: false,
+  })
+  const fundHit = fundLookup.data ?? null
+
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (e.target instanceof Element && e.target.closest('[data-watchlist-group-menu]')) return
@@ -302,7 +313,7 @@ function StockSearchBox({
         <input
           ref={inputRef}
           type="text"
-          placeholder="搜索…"
+          placeholder="搜索 ETF / 6 位基金代码…"
           value={query}
           onChange={(e) => { setQuery(e.target.value); setOpen(true); setActiveIdx(-1) }}
           onFocus={() => { if (query.trim()) setOpen(true) }}
@@ -312,7 +323,7 @@ function StockSearchBox({
       </div>
 
       <AnimatePresence>
-        {open && results.length > 0 && (
+        {open && (results.length > 0 || fundHit) && (
           <motion.div
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
@@ -320,6 +331,33 @@ function StockSearchBox({
             transition={{ duration: 0.12, ease: [0.16, 1, 0.3, 1] }}
             className="absolute right-0 top-full mt-1 z-50 w-72 max-h-[320px] overflow-y-auto rounded-card border border-border bg-base shadow-xl"
           >
+            {/* 场外基金联想: 6 位纯数字命中天天基金时置顶展示 (无行情标的, 整行仅信息 + 建组动作) */}
+            {fundHit && (
+              <div
+                className="flex items-center gap-2.5 px-3 py-2 text-xs transition-colors duration-100 hover:bg-elevated text-foreground"
+              >
+                <span className="font-mono shrink-0 w-[80px]">{fundHit.code}</span>
+                <span className="flex min-w-0 flex-1 items-center gap-1">
+                  <span className="truncate text-secondary">{fundHit.name}</span>
+                  {fundHit.fund_type && (
+                    <span className="shrink-0 px-1 py-0.5 rounded text-[10px] leading-none bg-violet-500/10 text-violet-400">场外</span>
+                  )}
+                </span>
+                <button
+                  type="button"
+                  onClick={event => { event.stopPropagation(); onAddEtf(fundHit.code); setQuery(''); setOpen(false) }}
+                  disabled={addPending}
+                  className="shrink-0 rounded p-1 text-accent transition-colors hover:bg-accent/10 disabled:opacity-50 cursor-pointer"
+                  title={`以「${fundHit.name}」建成分股组 (取披露的重仓股)`}
+                  aria-label={`建成分股组 ${fundHit.code}`}
+                >
+                  <FolderPlus className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
+            {results.length > 0 && fundHit && (
+              <div className="mx-3 my-1 border-t border-border/70" />
+            )}
             {results.map((r, i) => {
               const entryGids = existingBySymbol.get(r.symbol)
               const inWatchlist = entryGids !== undefined
