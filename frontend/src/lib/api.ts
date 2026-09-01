@@ -2607,6 +2607,11 @@ export const api = {
     request<Depth5Snapshot>(`/api/intraday/depth5?symbol=${encodeURIComponent(symbol)}`, { quiet: true }),
   transactions: (symbol: string) =>
     request<TransactionsSnapshot>(`/api/kline/transactions?symbol=${encodeURIComponent(symbol)}`, { quiet: true }),
+  instrumentsNames: (symbols: string[]) =>
+    request<{ names: Record<string, string> }>('/api/kline/instruments/names', {
+      method: 'POST',
+      body: JSON.stringify(symbols),
+    }),
   fundSync: () => request<{ started: boolean; running: boolean }>('/api/data/funds/sync', { method: 'POST' }),
   fundSyncStatus: () => request<FundSyncStatus>('/api/data/funds/status'),
   refreshCache: () => request<{ ok: boolean }>('/api/data/refresh-cache', { method: 'POST' }),

@@ -85,6 +85,16 @@ function fmtAbnormalCalcTime(asofSec: number): string {
 
 export function StockPreviewDialog({ symbol, name, onClose, triggerInfo }: Props) {
   const [view, setView] = useState<PreviewView>('daily')
+  // 权威名称自校验: 入口页传入的 name 可能来自陈旧缓存 (2026-09-01 实证
+  // 002942.SZ 显示"新亚制程"), 标题一律以 instruments 内存缓存为准, prop 仅兜底。
+  const nameCheck = useQuery({
+    queryKey: ['instruments-name', symbol],
+    queryFn: () => api.instrumentsNames([symbol!]),
+    enabled: !!symbol,
+    staleTime: Infinity,
+    retry: false,
+  })
+  const displayName = nameCheck.data?.names?.[symbol!] ?? name
   const [intradayDays, setIntradayDays] = useState<number | null>(loadIntradayDays)
   const [dateRange, setDateRange] = useState(getDefaultRange)
   const [showMonitorEditor, setShowMonitorEditor] = useState(false)
@@ -242,7 +252,7 @@ export function StockPreviewDialog({ symbol, name, onClose, triggerInfo }: Props
                   ) : null
                 })()}
                 <span className="shrink-0 font-mono text-sm font-medium text-foreground">{symbol}</span>
-                {name && <span className="truncate text-xs text-muted">{name}</span>}
+                {displayName && <span className="truncate text-xs text-muted">{displayName}</span>}
               </div>
 
               <div className="flex shrink-0 items-center gap-1">
