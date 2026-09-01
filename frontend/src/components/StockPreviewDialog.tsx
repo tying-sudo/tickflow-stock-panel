@@ -10,8 +10,6 @@ import { fmtPct } from '@/lib/format'
 import { StockPanel, getDefaultRange } from '@/components/StockPanel'
 import { Depth5Panel } from '@/components/Depth5Panel'
 import { TickTransactionsPanel } from '@/components/TickTransactionsPanel'
-import { StockIntradayChart } from '@/components/StockIntradayChart'
-import { MinutePeriodChart, type MinutePeriod } from '@/components/MinutePeriodChart'
 import { WatchlistAddMenu } from '@/components/WatchlistAddMenu'
 import { StockMultiDayIntradayChart } from '@/components/StockMultiDayIntradayChart'
 import { DatePicker } from '@/components/DatePicker'
@@ -51,16 +49,6 @@ type PreviewView = 'daily' | 'intraday'
 const TX_REFETCH_INTERVAL_MS = 500
 // 盘口五档轮询: 0.5s (用户指定"实时计算快速反应"; TDX 快照单批 ~100ms, 0.5s 为安全上限)
 const DEPTH5_REFETCH_INTERVAL_MS = 500
-// 右列周期切换: 分时(当日分时线) / 1/5/15/30/60 分钟K
-type PreviewPeriod = 'intraday' | MinutePeriod
-const PREVIEW_PERIODS: { key: PreviewPeriod; label: string }[] = [
-  { key: 'intraday', label: '分时' },
-  { key: 1, label: '1分' },
-  { key: 5, label: '5分' },
-  { key: 15, label: '15分' },
-  { key: 30, label: '30分' },
-  { key: 60, label: '60分' },
-]
 interface PriceAlertDraft {
   id: number
   targetPrice: number
@@ -99,11 +87,6 @@ function fmtAbnormalCalcTime(asofSec: number): string {
 
 export function StockPreviewDialog({ symbol, name, onClose, triggerInfo }: Props) {
   const [view, setView] = useState<PreviewView>('daily')
-  // 右列周期 (持久化, 默认分时)
-  const [period, setPeriod] = useState<PreviewPeriod>(() => {
-    const saved = localStorage.getItem('stockPreviewPeriod')
-    return (PREVIEW_PERIODS.some(p => p.key === saved) ? saved : 'intraday') as PreviewPeriod
-  })
   // 权威名称自校验: 入口页传入的 name 可能来自陈旧缓存 (2026-09-01 实证
   // 002942.SZ 显示"新亚制程"), 标题一律以 instruments 内存缓存为准, prop 仅兜底。
   const nameCheck = useQuery({
@@ -521,6 +504,7 @@ export function StockPreviewDialog({ symbol, name, onClose, triggerInfo }: Props
                   symbol={symbol}
                   height={480}
                   showIntraday
+                  periodTabs
                   dateRange={dateRange}
                   priceLines={monitorPriceLines}
                   onPriceDoubleClick={openPriceAlert}
@@ -536,50 +520,12 @@ export function StockPreviewDialog({ symbol, name, onClose, triggerInfo }: Props
                     ),
                   }}
                   rightPanel={
-                    /* 右列: 周期切换走势图 (分时/1/5/15/30/60分) + 分时成交; 总高与左列(日K480+五档180)对齐往下覆盖 */
-                    <div className="flex flex-col" style={{ height: 672 }}>
-                      <div className="flex items-center justify-end gap-1">
-                        {PREVIEW_PERIODS.map(p => (
-                          <button
-                            key={String(p.key)}
-                            type="button"
-                            onClick={() => setPeriod(p.key)}
-                            className={`rounded px-1.5 py-0.5 text-[10px] transition-colors ${
-                              period === p.key
-                                ? 'bg-accent/15 font-semibold text-accent'
-                                : 'text-muted hover:bg-elevated hover:text-secondary'
-                            }`}
-                            title={p.key === 'intraday' ? '当日分时走势' : `${p.label}钟K线 (1分钟聚合)`}
-                          >
-                            {p.label}
-                          </button>
-                        ))}
-                      </div>
-                      <div className="mt-1.5 min-h-0" style={{ height: 402 }}>
-                        {period === 'intraday' ? (
-                          <StockIntradayChart
-                            symbol={symbol!}
-                            date={null}
-                            height={390}
-                            refetchIntervalMs={intradayRefetchMs}
-                          />
-                        ) : (
-                          <MinutePeriodChart
-                            symbol={symbol}
-                            period={period as MinutePeriod}
-                            height={390}
-                            refetchIntervalMs={intradayRefetchMs}
-                          />
-                        )}
-                      </div>
-                      <div className="mt-2 min-h-0 flex-1">
-                        <TickTransactionsPanel
-                          symbol={symbol}
-                          height={224}
-                          refetchIntervalMs={TX_REFETCH_INTERVAL_MS}
-                        />
-                      </div>
-                    </div>
+                    /* 右列: 分时成交列表 (加长至 672 与左列对齐往下覆盖; 用户指定恢复原位不塞周期图) */
+                    <TickTransactionsPanel
+                      symbol={symbol}
+                      height={672}
+                      refetchIntervalMs={TX_REFETCH_INTERVAL_MS}
+                    />
                   }
                 />
               ) : (

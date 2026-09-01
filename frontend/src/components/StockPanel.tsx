@@ -4,6 +4,7 @@ import { type KlineRow, type FinancialMetricRecord } from '@/lib/api'
 import { StockInfoBar } from '@/components/StockInfoBar'
 import { StockDailyKChart, getDefaultRange, type StockDailyKChartResult } from '@/components/StockDailyKChart'
 import { StockIntradayChart } from '@/components/StockIntradayChart'
+import { MinutePeriodChart, type MinutePeriod } from '@/components/MinutePeriodChart'
 import { useFinancialMetrics } from '@/lib/useFinancials'
 import { useCapabilities } from '@/lib/useSharedQueries'
 import type { ChartMarker, ChartPriceLine, ChartRange } from '@/components/EChartsCandlestick'
@@ -44,7 +45,18 @@ interface Props {
   rightPanel?: React.ReactNode
   /** 分时图下方插槽 (如五档盘口横排); height 为该插槽固定像素高度, 分时图自动让位 */
   intradayBottom?: { node: React.ReactNode; height: number }
+  /** 分时区右上角周期标签 [分时|1分|5分|15分|30分|60分] (用户指定: 在分时走势图内切换周期, 不新增独立图) */
+  periodTabs?: boolean
 }
+
+const MINUTE_PERIOD_TABS: { key: 'intraday' | MinutePeriod; label: string }[] = [
+  { key: 'intraday', label: '分时' },
+  { key: 1, label: '1分' },
+  { key: 5, label: '5分' },
+  { key: 15, label: '15分' },
+  { key: 30, label: '30分' },
+  { key: 60, label: '60分' },
+]
 
 export { getDefaultRange }
 
@@ -70,10 +82,13 @@ export function StockPanel({
   infoBarOnly = false,
   rightPanel,
   intradayBottom,
+  periodTabs = false,
 }: Props) {
   const [linkedPrice, setLinkedPrice] = useState<number | null>(null)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [intradayDismissed, setIntradayDismissed] = useState(false)
+  // 中列分时区周期: 'intraday'=分时线, N=该日 N 分钟K (同一区域内切换, 不新增独立图)
+  const [minutePeriod, setMinutePeriod] = useState<'intraday' | MinutePeriod>('intraday')
   const [dailyResult, setDailyResult] = useState<StockDailyKChartResult | null>(null)
   // 信息条指标配置提升到此层：同时供 StockInfoBar 渲染与 StockDailyKChart 请求 ext 数据
   const [fields, setFields] = useState<ColumnConfig[]>(loadInfoFields)
@@ -186,17 +201,47 @@ export function StockPanel({
             >
               <X className="h-3 w-3" />
             </button>
-            <StockIntradayChart
-              symbol={symbol}
-              date={selectedDate}
-              height={intradayBottom ? Math.max(200, height - intradayBottom.height - 12) : height}
-              prevClose={prevClose}
-              onPriceHover={setLinkedPrice}
-              onPriceDoubleClick={onPriceDoubleClick}
-              currentPrice={rows[rows.length - 1]?.close}
-              priceLines={priceLines}
-              refetchIntervalMs={refetchIntervalMs}
-            />
+            {/* 周期标签 (右上角, 通达信样式): 分时线 / 该日 N 分钟K, 同区域内切换 */}
+            {periodTabs && (
+              <div className="absolute right-2 top-1.5 z-10 flex items-center gap-0.5 rounded-btn border border-border bg-surface/90 px-1 py-0.5 backdrop-blur-sm">
+                {MINUTE_PERIOD_TABS.map(p => (
+                  <button
+                    key={String(p.key)}
+                    type="button"
+                    onClick={() => setMinutePeriod(p.key)}
+                    className={`rounded px-1.5 py-0.5 text-[10px] transition-colors ${
+                      minutePeriod === p.key
+                        ? 'bg-accent/15 font-semibold text-accent'
+                        : 'text-muted hover:bg-elevated hover:text-secondary'
+                    }`}
+                    title={p.key === 'intraday' ? '当日分时走势' : `${p.label}钟K线 (1分钟聚合, 同一选中日)`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {minutePeriod === 'intraday' ? (
+              <StockIntradayChart
+                symbol={symbol}
+                date={selectedDate}
+                height={intradayBottom ? Math.max(200, height - intradayBottom.height - 12) : height}
+                prevClose={prevClose}
+                onPriceHover={setLinkedPrice}
+                onPriceDoubleClick={onPriceDoubleClick}
+                currentPrice={rows[rows.length - 1]?.close}
+                priceLines={priceLines}
+                refetchIntervalMs={refetchIntervalMs}
+              />
+            ) : (
+              <MinutePeriodChart
+                symbol={symbol}
+                date={selectedDate}
+                period={minutePeriod as MinutePeriod}
+                height={intradayBottom ? Math.max(200, height - intradayBottom.height - 12) : height}
+                refetchIntervalMs={refetchIntervalMs}
+              />
+            )}
             {intradayBottom && (
               <div className="mt-3 shrink-0" style={{ height: intradayBottom.height }}>
                 {intradayBottom.node}

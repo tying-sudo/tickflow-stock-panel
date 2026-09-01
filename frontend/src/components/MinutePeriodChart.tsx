@@ -3,10 +3,11 @@ import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 
 /**
- * 分钟周期走势图 (个股预览第三列): 分时外的 1/5/15/30/60 分钟 K 线。
- * 数据 = 最新交易日 1 分钟线 (api.klineMinute, live); N 分钟在前端聚合
- * (按 A 股交易分钟窗对齐: 09:30 起 N 根 1 分钟合一根, OHLC 取首高低末, 量额求和),
- * 保证切换周期后走势图的每一根 bar 都来自对应窗口的真实计算。
+ * 分钟周期 K 线 (个股预览弹窗中列分时区的周期切换档):
+ * 数据 = 指定日期 (或最新交易日) 的 1 分钟线 (api.klineMinute, live);
+ * N 分钟在前端聚合 (按 A 股交易分钟窗对齐: 09:30 起 N 根 1 分钟合一根,
+ * OHLC 取首高低末), 保证切换周期后走势图每一根 bar 都是窗口真实计算。
+ * 与 StockIntradayChart 同区渲染 (右上角标签切换), 无独立卡片外壳。
  */
 export type MinutePeriod = 1 | 5 | 15 | 30 | 60
 
@@ -69,18 +70,21 @@ export function aggregateMinutes(rows: { datetime: string; open: number | null; 
 
 export function MinutePeriodChart({
   symbol,
+  date = null,
   period,
   height,
   refetchIntervalMs,
 }: {
   symbol: string | null
+  /** 交易日 (null = 最新交易日); 跟随中列分时图选中日 */
+  date?: string | null
   period: MinutePeriod
   height: number
   refetchIntervalMs?: number
 }) {
   const { data } = useQuery({
-    queryKey: ['minute-period', symbol, period],
-    queryFn: () => api.klineMinute(symbol!, undefined, true),
+    queryKey: ['minute-period', symbol, date, period],
+    queryFn: () => api.klineMinute(symbol!, date ?? undefined, true),
     enabled: !!symbol,
     staleTime: 15_000,
     refetchInterval: refetchIntervalMs ?? false,
@@ -91,17 +95,17 @@ export function MinutePeriodChart({
     return aggregateMinutes(rows, period)
   }, [data, period])
 
-  const W = 236
+  const W = 420
   const H = height
-  const padR = 34 // 右侧最新价签
+  const padR = 40 // 右侧最新价签
   const padB = 16 // 底部时间刻度
   const padT = 6
-  const innerW = W - padR - 4
+  const innerW = W - padR - 2
   const innerH = H - padT - padB
 
   const content = (() => {
     if (!bars.length) {
-      return <div className="grid h-full place-items-center text-[10px] text-muted">加载中…</div>
+      return <div className="grid h-full place-items-center text-[10px] text-muted">该日无分钟数据</div>
     }
     let hi = -Infinity
     let lo = Infinity
@@ -136,7 +140,7 @@ export function MinutePeriodChart({
     const timeTicks = [0, Math.floor(n / 3), Math.floor((2 * n) / 3), n - 1].filter((v, i, a) => a.indexOf(v) === i)
 
     return (
-      <svg width="100%" viewBox={`0 0 ${W} ${H}`} className="block" role="img" aria-label={`${period}分钟K线`}>
+      <svg width="100%" viewBox={`0 0 ${W} ${H}`} className="block" preserveAspectRatio="none" role="img" aria-label={`${period}分钟K线`}>
         {ticks}
         {bars.map((b, i) => {
           const x = i * barW + barW / 2
@@ -154,8 +158,8 @@ export function MinutePeriodChart({
         })}
         {/* 最新价虚线 + 价签 */}
         <line x1={0} x2={innerW} y1={y(last.close)} y2={y(last.close)} stroke={up ? BULL : BEAR} strokeWidth={0.6} strokeDasharray="3 2" opacity={0.7} />
-        <rect x={innerW + 1} y={y(last.close) - 6.5} width={padR - 2} height={13} rx={2} fill={up ? BULL : BEAR} />
-        <text x={innerW + 3} y={y(last.close) + 3} fontSize={8.5} fill="#fff">{last.close.toFixed(2)}</text>
+        <rect x={innerW + 1} y={Math.max(2, Math.min(y(last.close) - 6.5, innerH - 13))} width={padR - 2} height={13} rx={2} fill={up ? BULL : BEAR} />
+        <text x={innerW + 3} y={Math.max(11.5, Math.min(y(last.close) + 3, innerH - 0.5))} fontSize={8.5} fill="#fff">{last.close.toFixed(2)}</text>
         {timeTicks.map((i, k) => (
           <text key={k} x={Math.min(Math.max(i * barW + barW / 2, 14), innerW - 14)} y={H - 4} fontSize={8.5} fill="currentColor" className="text-muted" textAnchor="middle">
             {bars[i].time}
@@ -166,12 +170,8 @@ export function MinutePeriodChart({
   })()
 
   return (
-    <div className="rounded-card border border-border bg-surface p-1.5" style={{ height: H + 12 }}>
-      <div className="mb-0.5 flex items-center justify-between px-0.5 text-[10px]">
-        <span className="font-medium text-secondary">{period}分钟K · 最新交易日</span>
-        <span className="font-mono text-muted">{bars.length}根</span>
-      </div>
-      <div style={{ height: H }}>{content}</div>
+    <div className="h-full" style={{ height: H }}>
+      {content}
     </div>
   )
 }
