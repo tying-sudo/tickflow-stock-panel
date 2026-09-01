@@ -278,8 +278,8 @@ export interface EtfGroupAddResult {
   removed: number
 }
 
-/** GET /api/watchlist/fund-search 返回 (天天基金搜索) */
-export interface FundSearchResult {
+/** GET /api/watchlist/fund-search 单条结果 (天天基金联想) */
+export interface FundSearchHit {
   code: string
   name: string
   fund_type?: string | null
@@ -2242,9 +2242,9 @@ export const api = {
   /** 全部 ETF 分组同步到最新口径 (指数官方成分优先, 披露兜底)。 */
   watchlistSyncEtfGroups: () =>
     request<Record<string, unknown>>('/api/watchlist/sync-etf-groups', { method: 'POST' }),
-  /** 6 位基金/ETF 代码联想 (instruments 维表不含场外基金)。 */
-  watchlistFundSearch: (code: string) =>
-    request<FundSearchResult>(`/api/watchlist/fund-search?code=${encodeURIComponent(code)}`),
+  /** 基金联想 (instruments 维表不含场外基金): 6 位代码精确 / 代码名称片段模糊 (≥2 字符)。 */
+  watchlistFundSearch: (q: string) =>
+    request<{ results: FundSearchHit[] }>(`/api/watchlist/fund-search?q=${encodeURIComponent(q)}`),
   watchlistGroups: () =>
     request<{ groups: WatchlistGroup[] }>('/api/watchlist/groups'),
   watchlistGroupCreate: (name: string, color: WatchlistGroupColor) =>

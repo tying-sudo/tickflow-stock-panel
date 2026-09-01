@@ -102,11 +102,18 @@ def add_batch(req: BatchAddRequest, request: Request):
 
 
 @router.get("/fund-search")
-def fund_search(code: str = Query(..., description="6 位基金/ETF 代码")):
-    """基金代码联想 (instruments 维表不含场外基金, 前端 instrument 搜索无结果时调用)。"""
-    code = code.strip()
+def fund_search(q: str = Query(..., description="6 位基金代码 (精确) 或代码/名称片段 (模糊, ≥2 字符)")):
+    """基金联想 (instruments 维表不含场外基金, 基金自选页搜索框调用)。
+
+    6 位纯数字 → 天天基金精确匹配; 其余 → 代码/名称模糊联想 (前 8 条)。
+    """
+    q = q.strip()
+    if not q:
+        raise HTTPException(400, "q 不能为空")
     try:
-        return fund_holdings.search_fund(code)
+        if re.fullmatch(r"\d{6}", q):
+            return {"results": [fund_holdings.search_fund(q)]}
+        return {"results": fund_holdings.search_fund_suggest(q)}
     except fund_holdings.FundHoldingsError as e:
         raise HTTPException(404, str(e)) from e
 

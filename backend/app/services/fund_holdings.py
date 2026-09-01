@@ -173,6 +173,46 @@ def search_fund(code: str) -> dict:
     raise FundHoldingsError(f"基金 {code} 未找到 (天天基金搜索无结果)")
 
 
+def search_fund_suggest(q: str, limit: int = 8) -> list[dict]:
+    """天天基金模糊联想: 代码片段或名称关键词 → [{code, name, fund_type}]。
+
+    与 search_fund 共用 FundSearchAPI (key=关键词本身即模糊匹配),
+    区别仅在不做精确匹配, 返回 CATEGORY=700 (基金) 的前 limit 条。
+    供基金自选页搜索框联想: 输入部分代码 ("0133") 或名称片段 ("芯片") 均可。
+    """
+    import urllib.parse
+
+    key = (q or "").strip()
+    if len(key) < 2:
+        return []
+    url = _FUND_SEARCH_BASE + "?" + urllib.parse.urlencode(
+        {"m": "1", "key": key, "pageindex": "0", "pagesize": str(limit * 3)}
+    )
+    body = _http_get(url)
+    try:
+        datas = json.loads(body).get("Datas") or []
+    except (json.JSONDecodeError, ValueError) as exc:
+        raise FundHoldingsError(f"基金联想响应异常: {exc}") from exc
+    out: list[dict] = []
+    for item in datas:
+        # CATEGORY 700 = 基金 (股票/板块等其他类别跳过)
+        if item.get("CATEGORY") != 700:
+            continue
+        code = str(item.get("CODE") or "")
+        if not re.fullmatch(r"\d{6}", code):
+            continue
+        base = item.get("FundBaseInfo")
+        ftype = base.get("FTYPE") if isinstance(base, dict) else None
+        out.append({
+            "code": code,
+            "name": str(item.get("NAME") or "").strip() or code,
+            "fund_type": ftype,
+        })
+        if len(out) >= limit:
+            break
+    return out
+
+
 # ---------------------------------------------------------------------------
 # 数据源 2: ETF 跟踪指数的官方成分 (jbgk 跟踪标的 → 指数代码 → 中证权重表)
 # ---------------------------------------------------------------------------

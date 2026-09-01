@@ -252,25 +252,32 @@ function StockSearchBox({
   const inputRef = useRef<HTMLInputElement>(null)
   const [activeIdx, setActiveIdx] = useState(-1)
 
+  // 300ms 防抖: 每个键击不触发搜索 (ETF 维表 + 天天基金联想共用)
+  const [debounced, setDebounced] = useState('')
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(query.trim()), 300)
+    return () => clearTimeout(t)
+  }, [query])
+
   const search = useQuery({
-    queryKey: QK.instrumentSearch(query, 'etf'),
-    queryFn: () => api.instrumentSearch(query, 20, 'etf'),
-    enabled: query.trim().length > 0,
+    queryKey: QK.instrumentSearch(debounced, 'etf'),
+    queryFn: () => api.instrumentSearch(debounced, 20, 'etf'),
+    enabled: debounced.length > 0,
     staleTime: 30_000,
   })
 
   const results = search.data?.results ?? []
 
-  // 基金页差异: 6 位纯数字 → 场外基金联想 (天天基金, instruments 维表里没有)
-  const trimmed = query.trim()
+  // 基金页差异: 场外基金模糊联想 (天天基金, instruments 维表里没有)
+  // ≥2 字符即触发: 代码片段 ("0133") / 名称关键词 ("芯片") 均可
   const fundLookup = useQuery({
-    queryKey: ['fund-search', trimmed],
-    queryFn: () => api.watchlistFundSearch(trimmed),
-    enabled: /^\d{6}$/.test(trimmed),
+    queryKey: ['fund-search', debounced],
+    queryFn: () => api.watchlistFundSearch(debounced),
+    enabled: debounced.length >= 2,
     staleTime: 60_000,
     retry: false,
   })
-  const fundHit = fundLookup.data ?? null
+  const fundHits = fundLookup.data?.results ?? []
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -323,7 +330,7 @@ function StockSearchBox({
       </div>
 
       <AnimatePresence>
-        {open && (results.length > 0 || fundHit) && (
+        {open && (results.length > 0 || fundHits.length > 0) && (
           <motion.div
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
@@ -331,31 +338,32 @@ function StockSearchBox({
             transition={{ duration: 0.12, ease: [0.16, 1, 0.3, 1] }}
             className="absolute right-0 top-full mt-1 z-50 w-72 max-h-[320px] overflow-y-auto rounded-card border border-border bg-base shadow-xl"
           >
-            {/* 场外基金联想: 6 位纯数字命中天天基金时置顶展示 (无行情标的, 整行仅信息 + 建组动作) */}
-            {fundHit && (
+            {/* 场外基金模糊联想置顶 (代码片段/名称关键词, 无行情标的, 行内建组动作) */}
+            {fundHits.map(hit => (
               <div
+                key={`fund-${hit.code}`}
                 className="flex items-center gap-2.5 px-3 py-2 text-xs transition-colors duration-100 hover:bg-elevated text-foreground"
               >
-                <span className="font-mono shrink-0 w-[80px]">{fundHit.code}</span>
+                <span className="font-mono shrink-0 w-[80px]">{hit.code}</span>
                 <span className="flex min-w-0 flex-1 items-center gap-1">
-                  <span className="truncate text-secondary">{fundHit.name}</span>
-                  {fundHit.fund_type && (
+                  <span className="truncate text-secondary">{hit.name}</span>
+                  {hit.fund_type && (
                     <span className="shrink-0 px-1 py-0.5 rounded text-[10px] leading-none bg-violet-500/10 text-violet-400">场外</span>
                   )}
                 </span>
                 <button
                   type="button"
-                  onClick={event => { event.stopPropagation(); onAddEtf(fundHit.code); setQuery(''); setOpen(false) }}
+                  onClick={event => { event.stopPropagation(); onAddEtf(hit.code); setQuery(''); setOpen(false) }}
                   disabled={addPending}
                   className="shrink-0 rounded p-1 text-accent transition-colors hover:bg-accent/10 disabled:opacity-50 cursor-pointer"
-                  title={`以「${fundHit.name}」建成分股组 (取披露的重仓股)`}
-                  aria-label={`建成分股组 ${fundHit.code}`}
+                  title={`以「${hit.name}」建成分股组 (场外取披露的重仓股)`}
+                  aria-label={`建成分股组 ${hit.code}`}
                 >
                   <FolderPlus className="h-3.5 w-3.5" />
                 </button>
               </div>
-            )}
-            {results.length > 0 && fundHit && (
+            ))}
+            {results.length > 0 && fundHits.length > 0 && (
               <div className="mx-3 my-1 border-t border-border/70" />
             )}
             {results.map((r, i) => {
@@ -1333,7 +1341,7 @@ export function FundWatchlist() {
   return (
     <div className="flex flex-col h-full">
       <PageHeader
-        title="自选股"
+        title="自选基金"
         titleExtra={
           <span className="inline-flex items-center gap-1.5">
             {/* 计数胶囊: 显示数/总数, mono 字体突出数字 */}
@@ -1623,8 +1631,8 @@ export function FundWatchlist() {
           ) : allSymbols.length === 0 ? (
             <EmptyState
               icon={Star}
-              title="自选股为空"
-              hint="点击右上角搜索添加标的，或点击图片图标从券商自选截图批量导入。"
+              title="自选基金为空"
+              hint="点击右上角搜索添加 ETF / 基金 (自动建成分股组)，或点击图片图标从券商自选截图批量导入。"
             />
           ) : rowsInSelectedGroup.length === 0 ? (
             <EmptyState
