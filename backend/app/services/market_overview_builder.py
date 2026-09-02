@@ -60,6 +60,14 @@ def _json_safe(value: Any) -> Any:
     return value
 
 
+_ETF_CODE_PREFIXES = ("50", "51", "52", "56", "57", "58", "59", "15", "16", "17", "18")
+
+
+def _is_etf(symbol: str) -> bool:
+    """场内 ETF/基金代码判定 (与 watchlist add-etf-group 同口径)。"""
+    return symbol.startswith(_ETF_CODE_PREFIXES)
+
+
 def _board(symbol: str) -> str:
     if symbol.endswith(".BJ"):
         return "北交所"
@@ -595,7 +603,10 @@ def build_market_overview(
         "emotion": {"score": emotion_score, "label": emotion_label},
         "top_gainers": _top_rows(rows, "change_pct", True),
         "top_losers": _top_rows(rows, "change_pct", False),
-        "turnover_leaders": _top_rows(rows, "amount", True),
+        "turnover_leaders": _top_rows(
+            [r for r in rows if not _is_etf(str(r.get("symbol") or ""))],
+            "amount", True,
+        ),
         "active_leaders": _top_rows(rows, "turnover_rate", True),
         "concept_rank": concept_rank,
         "industry_rank": industry_rank,

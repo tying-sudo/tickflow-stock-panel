@@ -19,6 +19,7 @@
 
 from __future__ import annotations
 
+import math
 import threading
 import time
 from dataclasses import dataclass
@@ -28,6 +29,18 @@ from typing import Any
 import polars as pl
 
 from app.indicators.pipeline import DEVIATION_WINDOWS
+
+
+def _json_safe(value: Any) -> Any:
+    """NaN/Inf float → None (FastAPI JSON 序列化拒绝非有限 float; enriched
+    当日快照部分票的 float 列可含 NaN, 不清洗则 /abnormal/intraday 500)。"""
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(v) for v in value]
+    return value
 
 # ── 规则表 ────────────────────────────────────────────────
 
@@ -278,5 +291,5 @@ def build_intraday(repo: Any, limit: int = 500) -> dict[str, Any]:
     rows.sort(key=lambda r: (r["_prio"], -abs(r.get("change_pct") or 0.0)))
     for r in rows:
         r.pop("_prio", None)
-    return {"cache_date": cache_date.isoformat() if cache_date else None,
-            "counts": counts, "rows": rows[:limit]}
+    return _json_safe({"cache_date": cache_date.isoformat() if cache_date else None,
+                       "counts": counts, "rows": rows[:limit]})
