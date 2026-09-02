@@ -14,9 +14,12 @@ interface Props {
 type Level = { price: number; volume: number }
 type LevelRow = Level | null
 
-function fmtVol(v: number): string {
-  if (v >= 10000) return `${(v / 10000).toFixed(1)}万`
-  return v.toLocaleString()
+/** 股数缩写 (对齐通达信盘口量纲: 量以股计, 万/亿两级缩写)。入参 = 手数, ×100 转股。 */
+function fmtShares(lots: number): string {
+  const shares = lots * 100
+  if (shares >= 1e8) return `${(shares / 1e8).toFixed(2)}亿`
+  if (shares >= 1e4) return `${(shares / 1e4).toFixed(1)}万`
+  return `${Math.round(shares)}`
 }
 
 /** 委托金额 (元): 价格×手数×100 (封板徽标 / hover 提示用)。 */
@@ -125,9 +128,9 @@ export function Depth5Panel({ symbol, refetchIntervalMs, height = 420, className
             </span>
             <span
               className={`w-10 shrink-0 text-right text-secondary ${flash ? 'font-bold text-foreground' : ''}`}
-              title={`${row.volume} 手 = ${(row.volume * 100).toLocaleString()} 股 · 委托金额 ${fmtAmt(row.price, row.volume)}`}
+              title={`${row.volume.toLocaleString()} 手 = ${(row.volume * 100).toLocaleString()} 股 · 委托金额 ${fmtAmt(row.price, row.volume)}`}
             >
-              {fmtVol(row.volume)}
+              {fmtShares(row.volume)}
             </span>
           </>
         ) : (
@@ -145,7 +148,7 @@ export function Depth5Panel({ symbol, refetchIntervalMs, height = 420, className
       <div className="flex items-center px-1.5 pb-0.5 pt-1 text-[9px] text-muted/60">
         <span className="w-6 shrink-0">档位</span>
         <span className="flex-1 text-right">价格</span>
-        <span className="w-10 shrink-0 text-right">量</span>
+        <span className="w-10 shrink-0 text-right">量(股)</span>
       </div>
       {rows.map((row, i) =>
         renderRow(`${side}${i}`, `${side === 'ask' ? '卖' : '买'}${i + 1}`, row, side),
@@ -185,16 +188,16 @@ export function Depth5Panel({ symbol, refetchIntervalMs, height = 420, className
       {sealedSide === 'up' && bid1 && (
         <div className="flex shrink-0 items-center justify-between border-b border-border/40 bg-bull/[0.06] px-2 py-0.5">
           <span className="text-[10px] font-semibold text-bull">涨停封板</span>
-          <span className="font-mono text-[10px] font-semibold text-bull">
-            封单 {fmtVol(bid1.volume)}手 · {fmtAmt(bid1.price, bid1.volume)}
+          <span className="font-mono text-[10px] font-semibold text-bull" title={`${bid1.volume.toLocaleString()} 手封单`}>
+            封单额 {fmtAmt(bid1.price, bid1.volume)} · {fmtShares(bid1.volume)}股
           </span>
         </div>
       )}
       {sealedSide === 'down' && ask1 && (
         <div className="flex shrink-0 items-center justify-between border-b border-border/40 bg-bear/[0.06] px-2 py-0.5">
           <span className="text-[10px] font-semibold text-bear">跌停封板</span>
-          <span className="font-mono text-[10px] font-semibold text-bear">
-            封单 {fmtVol(ask1.volume)}手 · {fmtAmt(ask1.price, ask1.volume)}
+          <span className="font-mono text-[10px] font-semibold text-bear" title={`${ask1.volume.toLocaleString()} 手封单`}>
+            封单额 {fmtAmt(ask1.price, ask1.volume)} · {fmtShares(ask1.volume)}股
           </span>
         </div>
       )}
@@ -224,13 +227,13 @@ export function Depth5Panel({ symbol, refetchIntervalMs, height = 420, className
             {renderBlock(bidRows, 'bid')}
             {renderBlock(askRows, 'ask')}
           </div>
-          {/* 五档聚合: 买均/总买 (左) | 卖均/总卖 (右) — 对齐通达信盘口统计语义 */}
+          {/* 五档聚合: 买均/总买 (左) | 卖均/总卖 (右) — 量以股计万/亿缩写, 对齐通达信 */}
           <div className="flex shrink-0 divide-x divide-border/40 border-t border-border/40 font-mono text-[10px]">
-            <div className="min-w-0 flex-1 truncate px-1.5 py-1 text-bull" title={`五档加权买价 ${avgBid?.toFixed(3) ?? '—'} · 合计 ${totalBid} 手`}>
-              买均 {avgBid?.toFixed(2) ?? '—'} · 总买 {fmtVol(totalBid)}手
+            <div className="min-w-0 flex-1 truncate px-1.5 py-1 text-bull" title={`五档加权买价 ${avgBid?.toFixed(3) ?? '—'} · 合计 ${totalBid.toLocaleString()} 手 = ${(totalBid * 100).toLocaleString()} 股`}>
+              买均 {avgBid?.toFixed(2) ?? '—'} · 总买 {fmtShares(totalBid)}
             </div>
-            <div className="min-w-0 flex-1 truncate px-1.5 py-1 text-right text-bear" title={`五档加权卖价 ${avgAsk?.toFixed(3) ?? '—'} · 合计 ${totalAsk} 手`}>
-              卖均 {avgAsk?.toFixed(2) ?? '—'} · 总卖 {fmtVol(totalAsk)}手
+            <div className="min-w-0 flex-1 truncate px-1.5 py-1 text-right text-bear" title={`五档加权卖价 ${avgAsk?.toFixed(3) ?? '—'} · 合计 ${totalAsk.toLocaleString()} 手 = ${(totalAsk * 100).toLocaleString()} 股`}>
+              卖均 {avgAsk?.toFixed(2) ?? '—'} · 总卖 {fmtShares(totalAsk)}
             </div>
           </div>
         </>
