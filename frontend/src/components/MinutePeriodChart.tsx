@@ -140,7 +140,7 @@ export function MinutePeriodChart({
     const timeTicks = [0, Math.floor(n / 3), Math.floor((2 * n) / 3), n - 1].filter((v, i, a) => a.indexOf(v) === i)
 
     return (
-      <svg width="100%" viewBox={`0 0 ${W} ${H}`} className="block" preserveAspectRatio="none" role="img" aria-label={`${period}分钟K线`}>
+      <svg width="100%" height={H} viewBox={`0 0 ${W} ${H}`} className="block" preserveAspectRatio="none" role="img" aria-label={`${period}分钟K线`}>
         {ticks}
         {bars.map((b, i) => {
           const x = i * barW + barW / 2
