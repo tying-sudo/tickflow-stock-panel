@@ -201,9 +201,9 @@ export function StockPanel({
             >
               <X className="h-3 w-3" />
             </button>
-            {/* 周期标签 (右上角, 通达信样式): 分时线 / 该日 N 分钟K, 同区域内切换 */}
+            {/* 周期标签栏 (独立占位行, 不悬浮 — 悬浮会压住分时图 OHLC 信息条): 分时线 / 该日 N 分钟K */}
             {periodTabs && (
-              <div className="absolute right-2 top-1.5 z-10 flex items-center gap-0.5 rounded-btn border border-border bg-surface/90 px-1 py-0.5 backdrop-blur-sm">
+              <div className="mb-1 flex shrink-0 items-center justify-end gap-0.5">
                 {MINUTE_PERIOD_TABS.map(p => (
                   <button
                     key={String(p.key)}
@@ -225,7 +225,9 @@ export function StockPanel({
               <StockIntradayChart
                 symbol={symbol}
                 date={selectedDate}
-                height={intradayBottom ? Math.max(200, height - intradayBottom.height - 12) : height}
+                height={intradayBottom
+                  ? Math.max(200, height - intradayBottom.height - 12 - (periodTabs ? 24 : 0))
+                  : Math.max(200, height - (periodTabs ? 24 : 0))}
                 prevClose={prevClose}
                 onPriceHover={setLinkedPrice}
                 onPriceDoubleClick={onPriceDoubleClick}
@@ -238,7 +240,9 @@ export function StockPanel({
                 symbol={symbol}
                 date={selectedDate}
                 period={minutePeriod as MinutePeriod}
-                height={intradayBottom ? Math.max(200, height - intradayBottom.height - 12) : height}
+                height={intradayBottom
+                  ? Math.max(200, height - intradayBottom.height - 12 - (periodTabs ? 24 : 0))
+                  : Math.max(200, height - (periodTabs ? 24 : 0))}
                 refetchIntervalMs={refetchIntervalMs}
               />
             )}
