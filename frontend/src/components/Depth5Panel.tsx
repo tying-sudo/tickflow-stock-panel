@@ -93,6 +93,12 @@ export function Depth5Panel({ symbol, refetchIntervalMs, height = 420, className
   const ts = snapshot?.ts ? new Date(snapshot.ts).toLocaleTimeString('zh-CN', { hour12: false }) : null
   const sourceLabel = snapshot?.source === 'tdx_gateway' ? 'TDX' : snapshot?.source === 'tickflow' ? 'TickFlow' : null
 
+  // 五档聚合统计 (对齐通达信盘口 买均/总买/卖均/总卖): 量为手, 均价为五档量加权。
+  const totalBid = bids.reduce((s, r) => s + r.volume, 0)
+  const totalAsk = rawAsks.reduce((s, r) => s + r.volume, 0)
+  const avgBid = totalBid > 0 ? bids.reduce((s, r) => s + r.price * r.volume, 0) / totalBid : null
+  const avgAsk = totalAsk > 0 ? rawAsks.reduce((s, r) => s + r.price * r.volume, 0) / totalAsk : null
+
   // 涨跌停封板判定 (对齐通达信语义): 单侧档位全空 = 对侧封死。
   // 涨停: 卖档全空、买1 即封单; 跌停: 买档全空、卖1 即封单。
   const ask1 = rawAsks[0] ?? null
@@ -217,6 +223,15 @@ export function Depth5Panel({ symbol, refetchIntervalMs, height = 420, className
           <div className="flex min-h-0 flex-1 divide-x divide-border/40 overflow-y-auto">
             {renderBlock(bidRows, 'bid')}
             {renderBlock(askRows, 'ask')}
+          </div>
+          {/* 五档聚合: 买均/总买 (左) | 卖均/总卖 (右) — 对齐通达信盘口统计语义 */}
+          <div className="flex shrink-0 divide-x divide-border/40 border-t border-border/40 font-mono text-[10px]">
+            <div className="min-w-0 flex-1 truncate px-1.5 py-1 text-bull" title={`五档加权买价 ${avgBid?.toFixed(3) ?? '—'} · 合计 ${totalBid} 手`}>
+              买均 {avgBid?.toFixed(2) ?? '—'} · 总买 {fmtVol(totalBid)}手
+            </div>
+            <div className="min-w-0 flex-1 truncate px-1.5 py-1 text-right text-bear" title={`五档加权卖价 ${avgAsk?.toFixed(3) ?? '—'} · 合计 ${totalAsk} 手`}>
+              卖均 {avgAsk?.toFixed(2) ?? '—'} · 总卖 {fmtVol(totalAsk)}手
+            </div>
           </div>
         </>
       )}

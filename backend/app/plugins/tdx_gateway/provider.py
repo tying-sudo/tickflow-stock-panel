@@ -573,6 +573,16 @@ class TdxGatewayProvider:
                     continue
                 bid_prices = _depth_levels(snapshot.get("Buyp"))
                 ask_prices = _depth_levels(snapshot.get("Sellp"))
+                if _book_structure_invalid(bid_prices, ask_prices):
+                    # 刮削品缓存开板/回封瞬间旧盘口: 价格轴吻合、档位齐全但结构
+                    # 非法 (买档回升/卖档下探/买卖交叉, 002265 案例卖1=买1=涨停价)。
+                    # 弃用整体走 pytdx quotes 兜底。
+                    logger.warning(
+                        "depth5 %s: structurally invalid TdxW book (crossed/unsorted) — falling back to pytdx",
+                        symbol,
+                    )
+                    incomplete.append(symbol)
+                    continue
                 result[symbol] = {
                     "ask_prices": ask_prices,
                     "ask_volumes": _depth_levels(snapshot.get("Sellv"), integer=True),
@@ -926,6 +936,26 @@ def _book_inconsistent_with_last(snapshot: dict[str, Any]) -> bool:
     if bid1 and abs(bid1 - now) > tol:
         return True
     if ask1 and abs(ask1 - now) > tol:
+        return True
+    return False
+
+
+def _book_structure_invalid(bid_prices: list[float], ask_prices: list[float]) -> bool:
+    """TdxW 刮削品结构校验: 档位单调性 + 买卖交叉 (2026-09-02, 002265 案例)。
+
+    真实盘口恒满足: 买档价不回升 (bid1>=bid2>=...), 卖档价不下探
+    (ask1<=ask2<=...), 且非跌停下 卖1>买1。TdxW 刮削品可能缓存开板/回封
+    瞬间的旧盘口 — 价格轴与 Now 吻合、5 档正数齐全, 骗过偏差与档位两道
+    拦截, 但结构非法 (如 涨停封板快照里混入 开板时刻的 卖1=涨停价)。
+    零占位 (0.0, 封死侧) 跳过不参与; 同价多档合法 (用严格不等判破坏)。
+    """
+    bs = [p for p in bid_prices if p > 0]
+    as_ = [p for p in ask_prices if p > 0]
+    if any(bs[i] < bs[i + 1] for i in range(len(bs) - 1)):  # 买档价回升
+        return True
+    if any(as_[i] > as_[i + 1] for i in range(len(as_) - 1)):  # 卖档价下探
+        return True
+    if bs and as_ and as_[0] <= bs[0]:  # 买卖交叉 (跌停时买侧为空不会触发)
         return True
     return False
 
