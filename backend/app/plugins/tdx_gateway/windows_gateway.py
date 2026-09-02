@@ -20,7 +20,7 @@ import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from threading import BoundedSemaphore
+from threading import BoundedSemaphore, Lock
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -200,7 +200,7 @@ class GatewayHandler(BaseHTTPRequestHandler):
                     if date_arg and (not date_arg.isdigit() or len(date_arg) != 8):
                         raise ValueError("date must be YYYYMMDD")
                     date_arg = date_arg or None
-                rows = _tickdata_rows(symbols, kind, count, date_arg)
+                rows = _tickdata_rows_cached(symbols, kind, count, date_arg)
                 self._write(HTTPStatus.OK, {"rows": rows})
                 return
 
@@ -420,6 +420,58 @@ def _tickdata_rows(symbols: list[str], kind: str, count: int, date_arg: str | No
     if not isinstance(rows, dict):
         raise RuntimeError("tickdata subprocess returned no rows map")
     return {str(key): list(value or []) for key, value in rows.items()}
+
+
+# ── 当日 bars 短 TTL 缓存 (2026-09-02): 单股分时/分钟K是面板最热路径, 桥查询
+# 基线 ~50-300ms 但盘中并发竞争+桥重连可放大到秒级; 当日 1 分钟K每 60s 才收线
+# 一根, 30s TTL 内重复请求直接命中, 最后一根陈旧度 ≤TTL 对分时图无感。
+# key 含当日日期: 跨日自动失效。TTL=0 关闭。仅缓存 kind=bars (ticks 逐笔高频
+# 变化不缓存; 带 date 的历史查询不缓存)。
+_BARS_CACHE: dict = {}  # (ymd, sym, count) -> (monotonic, rows_list)
+_BARS_CACHE_LOCK = Lock()
+_BARS_CACHE_TTL = float(os.environ.get("TDX_GATEWAY_BARS_TTL", "30"))
+_BARS_CACHE_MAX = 600
+
+
+def _bars_cache_get(ymd: str, sym: str, count: int):
+    if _BARS_CACHE_TTL <= 0:
+        return None
+    with _BARS_CACHE_LOCK:
+        hit = _BARS_CACHE.get((ymd, sym, count))
+        if hit is not None and time.monotonic() - hit[0] < _BARS_CACHE_TTL:
+            return hit[1]
+    return None
+
+
+def _bars_cache_put(ymd: str, sym: str, count: int, rows: list) -> None:
+    if _BARS_CACHE_TTL <= 0 or not rows:
+        return
+    with _BARS_CACHE_LOCK:
+        if len(_BARS_CACHE) >= _BARS_CACHE_MAX:
+            for k in sorted(_BARS_CACHE, key=lambda k: _BARS_CACHE[k][0])[: _BARS_CACHE_MAX // 2]:
+                _BARS_CACHE.pop(k, None)
+        _BARS_CACHE[(ymd, sym, count)] = (time.monotonic(), rows)
+
+
+def _tickdata_rows_cached(symbols: list[str], kind: str, count: int, date_arg: str | None) -> dict:
+    """kind=bars 当日查询走 per-symbol TTL 缓存; 其余走原路径。"""
+    if kind != "bars" or date_arg or _BARS_CACHE_TTL <= 0:
+        return _tickdata_rows(symbols, kind, count, date_arg)
+    ymd = time.strftime("%Y%m%d")
+    merged: dict = {}
+    miss: list[str] = []
+    for s in symbols:
+        hit = _bars_cache_get(ymd, str(s), count)
+        if hit is not None:
+            merged[str(s)] = list(hit)
+        else:
+            miss.append(str(s))
+    if miss:
+        rows = _tickdata_rows(miss, "bars", count, None)
+        for s, v in rows.items():
+            _bars_cache_put(ymd, s, count, v)
+        merged.update(rows)
+    return {str(s): list(merged.get(str(s)) or []) for s in symbols}
 
 
 def _quotes_rows(symbols: list[str]) -> dict:
