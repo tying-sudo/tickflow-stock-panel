@@ -4,6 +4,11 @@
 - 输入为 data/financials/metrics/part.parquet, 每行一份报告期指标;
 - ``announce_date`` 是公告日。因子只在 **严格晚于公告日的交易日** 才有值
   (公告多在盘后发布, 保守取 T+1 生效), 此前保持 null;
+- ``announce_date`` 缺失的行 (新浪通道无公告日) 以 ``period_end`` 的法定
+  最晚披露期限兜底 (Q1→4/30, H1→8/31, Q3→10/31, 年报→次年 4/30)。
+  真实公告日恒 <= 法定期限, 以期限为公告日只会推迟因子可见性, 方向保守,
+  不引入未来函数; 副作用是这类行的生效日从真实 T+1 退化为最迟 T+1。
+  同一派生期限撞日 (如年报与次年一季报都是 4/30) 时按报告期新者优先;
 - 财报历史按 (symbol, period_end) 累积 (见 services/financial_sync.py),
   同一期以最新公告为准;
 - 无财务数据的标的/日期一律为 null, 绝不填 0 (填 0 会污染截面排名,
@@ -17,6 +22,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import date
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
@@ -25,6 +31,23 @@ import numpy as np
 import polars as pl
 
 logger = logging.getLogger(__name__)
+
+
+def statutory_disclosure_deadline(period_end: date) -> date | None:
+    """报告期 → 法定最晚披露日; 非标准报告期月份返回 None。
+
+    真实公告日恒早于等于法定期限, 因此用期限兜底 ``announce_date`` 缺失的行
+    是点时安全的 (只会更晚可见, 绝不提前)。
+    """
+    if period_end.month == 3:
+        return date(period_end.year, 4, 30)
+    if period_end.month == 6:
+        return date(period_end.year, 8, 31)
+    if period_end.month == 9:
+        return date(period_end.year, 10, 31)
+    if period_end.month == 12:
+        return date(period_end.year + 1, 4, 30)
+    return None
 
 # 财务因子名 -> (metrics 表列名, 是否需要除以收盘价)
 # pb_latest 单列声明为 bps 倒数口径: 因子值 = close / bps。
@@ -45,6 +68,8 @@ def load_fundamental_snapshot(data_dir: Path | None) -> pl.DataFrame | None:
     """读取财务指标快照; 文件缺失或无有效行时返回 None。
 
     返回列: symbol, _announce (Date), 以及各因子对应的 metrics 列。
+    announce_date 为 null 的行若有 period_end, 用法定披露期限兜底 _announce
+    (见模块 docstring); 两者都缺的行仍视为不可点时, 丢弃。
     """
     if data_dir is None:
         return None
@@ -62,16 +87,35 @@ def load_fundamental_snapshot(data_dir: Path | None) -> pl.DataFrame | None:
     if not needed.issubset(frame.columns):
         logger.warning("财务指标快照缺少列: %s", sorted(needed - set(frame.columns)))
         return None
+    has_period = "period_end" in frame.columns
+    snapshot = frame.select(sorted(needed | ({"period_end"} if has_period else set()))).filter(
+        pl.col("symbol").is_not_null()
+    )
+    snapshot = snapshot.with_columns(
+        pl.col("announce_date").cast(pl.Utf8).str.slice(0, 10).str.to_date().alias("_announce")
+    )
+    sort_keys = ["symbol", "_announce"]
+    if has_period:
+        snapshot = snapshot.with_columns(
+            pl.col("period_end").cast(pl.Utf8).str.slice(0, 10).str.to_date().alias("_period")
+        ).drop("period_end")
+        # 派生期限映射: 报告期种类 ~26 个, 独立成帧后 join, 避免 map_elements
+        deadline_rows = [
+            {"_period": period, "_deadline": statutory_disclosure_deadline(period)}
+            for period in snapshot["_period"].unique().to_list()
+            if period is not None
+        ]
+        if deadline_rows:
+            deadlines = pl.DataFrame(
+                deadline_rows, schema={"_period": pl.Date, "_deadline": pl.Date}
+            )
+            snapshot = snapshot.join(deadlines, on="_period", how="left")
+            snapshot = snapshot.with_columns(
+                pl.coalesce([pl.col("_announce"), pl.col("_deadline")]).alias("_announce")
+            ).drop("_deadline")
+        sort_keys.append("_period")  # 派生期限撞日时, 报告期新者后排序覆盖旧者
     snapshot = (
-        frame.select(sorted(needed))
-        .filter(
-            pl.col("symbol").is_not_null()
-            & pl.col("announce_date").is_not_null()
-        )
-        .with_columns(
-            pl.col("announce_date").cast(pl.Utf8).str.slice(0, 10).str.to_date().alias("_announce")
-        )
-        .sort(["symbol", "_announce"])
+        snapshot.filter(pl.col("_announce").is_not_null()).sort(sort_keys).drop("_period", strict=False)
     )
     if snapshot.is_empty():
         return None
@@ -160,15 +204,16 @@ def build_fundamental_matrices(
         FUNDAMENTAL_FACTORS[name]["column"]: np.full(shape, np.nan, dtype=np.float32)
         for name in requested
     }
-    announce_text = snapshot["announce_date"].str.slice(0, 10)
+    announce_values = snapshot["_announce"].to_list()
     for row_index, symbol in enumerate(snapshot["symbol"].to_list()):
         column_index = asset_index.get(symbol)
         if column_index is None:
             continue
-        announce = announce_text[row_index]
+        announce = announce_values[row_index]
         if announce is None:
             continue
-        # 公告日之后 (严格大于) 的首个时间行索引
+        # 公告日之后 (严格大于) 的首个时间行索引; 行序已按报告期新者优先,
+        # 后写覆盖使撞日时最新一期生效
         start = int(np.searchsorted(label_dates, np.datetime64(announce, "D"), side="right"))
         if start >= shape[0]:
             continue

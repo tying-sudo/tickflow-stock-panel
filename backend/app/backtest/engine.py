@@ -330,6 +330,26 @@ class BacktestEngine:
                 "enriched data changed while the snapshot was being read"
             )
 
+    def _instruments_for_backtest(self, asset_type: str) -> pl.DataFrame:
+        """回测读点专用维表: 活股 + 退市 sidecar 合并 (活股行优先)。
+
+        退市股不在 instruments, 元数据 join 后 name/股本为 null 会被
+        basic_filter 以 fill_null(False) 静默排除 (幸存者偏差), 详见
+        services/delisted_instruments.py。同步/监控等活股链路不受影响。
+        """
+        if self.repo is None:
+            return pl.DataFrame()
+        instruments = self.repo.get_instruments_asset(asset_type)
+        if asset_type != "stock" or instruments.is_empty():
+            return instruments
+        from app.services.delisted_instruments import merge_with_delisted
+
+        try:
+            return merge_with_delisted(instruments, self.repo.store.data_dir)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("退市股维表合并失败, 回测退化为仅活股: %s", exc)
+            return instruments
+
     def load_panel(
         self,
         symbols: list[str] | None,
@@ -412,11 +432,7 @@ class BacktestEngine:
                 fundamental_names,
             )
 
-        instruments = (
-            self.repo.get_instruments_asset(asset_type)
-            if self.repo is not None
-            else pl.DataFrame()
-        )
+        instruments = self._instruments_for_backtest(asset_type)
         matrix_native = feature_plan.execution_backend == "matrix_native"
         if not matrix_native:
             df = compute_indicators(df, needed=set(feature_plan.indicator_columns))
@@ -485,7 +501,11 @@ class BacktestEngine:
         from app.tickflow.repository import enriched_dirname
 
         parquet_root = self.repo.store.data_dir / enriched_dirname(asset_type)
-        instruments = self.repo.get_instruments_asset(asset_type)
+        instruments = self._instruments_for_backtest(asset_type)
+        # 股票全市场矩阵按维表收窄标的轴 (排除混入 kline_daily 的 ETF 批次);
+        # 显式 symbols 不动。矩阵轴变化会自然更新 cache fingerprint。
+        if asset_type == "stock" and symbols is None:
+            symbols = self._stock_universe_symbols()
         field_columns = (
             set(feature_plan.base_columns)
             | set(feature_plan.instrument_columns)
@@ -569,6 +589,18 @@ class BacktestEngine:
     def clear_panel_cache(self) -> None:
         self._cache.invalidate()
 
+    def _stock_universe_symbols(self) -> list[str] | None:
+        """股票回测标的轴: instruments ∪ 退市 sidecar 的 symbol 全集。
+
+        kline_daily 自 2026-08 起混入 ~1685 只 ETF 历史批次 (在 instruments_etf
+        而不在股票维表), 全市场面板不过滤会把 ETF 当股票纳入截面。以维表
+        收窄; 维表缺失时返回 None (不过滤, 保持旧行作)。
+        """
+        instruments = self._instruments_for_backtest("stock")
+        if instruments.is_empty() or "symbol" not in instruments.columns:
+            return None
+        return sorted(instruments["symbol"].cast(pl.Utf8).unique().to_list())
+
     def _load_panel_inner(
         self,
         symbols: list[str] | None,
@@ -579,11 +611,20 @@ class BacktestEngine:
     ) -> pl.DataFrame:
         t0 = time.perf_counter()
 
+        # 股票全市场加载时按维表收窄标的轴, 排除混入 kline_daily 的 ETF 批次;
+        # 用户显式指定的 symbols 视为意图明确, 不做收窄。
+        universe_symbols = (
+            self._stock_universe_symbols()
+            if asset_type == "stock" and symbols is None else None
+        )
+
         # 近期区间优先复用 repository 的预计算 enriched 历史缓存 (仅 stock: 该缓存为股票专用)。
         try:
             if columns is None and asset_type == "stock" and self.repo is not None and hasattr(self.repo, "get_enriched_range"):
                 cached = self.repo.get_enriched_range(start, end, symbols=symbols, columns=columns)
                 if cached is not None and not cached.is_empty():
+                    if universe_symbols is not None:
+                        cached = cached.filter(pl.col("symbol").is_in(universe_symbols))
                     elapsed = (time.perf_counter() - t0) * 1000
                     logger.info("load_panel(cache): %.0fms, %d rows, %d columns", elapsed, len(cached), len(cached.columns))
                     return cached
@@ -595,8 +636,9 @@ class BacktestEngine:
 
         try:
             lf = scan_enriched_parquet(enriched_glob)
-            if symbols is not None:
-                lf = lf.filter(pl.col("symbol").is_in(symbols))
+            symbol_filter = symbols if symbols is not None else universe_symbols
+            if symbol_filter is not None:
+                lf = lf.filter(pl.col("symbol").is_in(symbol_filter))
             if columns is not None:
                 available = set(lf.collect_schema().names())
                 selected = [c for c in columns if c in available]
@@ -627,8 +669,8 @@ class BacktestEngine:
 
         from app.indicators.pipeline import compute_all
         # 按 asset_type 取维表: ETF 回测须用 ETF 维表, 否则名称 JOIN 失败(全 null)、
-        # 涨停信号算在错误的 instruments 上。
-        instruments = self.repo.get_instruments_asset(asset_type)
+        # 涨停信号算在错误的 instruments 上。股票走合并维表 (含退市 sidecar)。
+        instruments = self._instruments_for_backtest(asset_type)
         df = compute_all(df, instruments=instruments)
         if not instruments.is_empty() and "name" not in df.columns:
             inst_cols = [c for c in ["symbol", "name"] if c in instruments.columns]

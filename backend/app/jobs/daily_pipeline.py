@@ -153,6 +153,16 @@ def run_now(
     universe = _resolve_universe(capset, repo)
     emit("resolve_universe", 10, f"标的池规模:{len(universe)} 只")
 
+    # 退市股维表增量派生 (回测幸存者偏差修复): 差集判定依赖最新 instruments,
+    # 放在维表同步后。扫描 kline_daily symbol 轴, 秒级; 失败仅告警不阻断。
+    try:
+        from app.services.delisted_instruments import sync_delisted_instruments
+
+        delisted_rows = sync_delisted_instruments(repo.store.data_dir)
+        emit("delisted_instruments", 10, f"退市股维表 {delisted_rows} 只")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("delisted instruments sync failed: %s", exc)
+
     # Step 1: 日 K 同步
     #   override_start_date 传入 → 强制 batch 拉取 [override_start_date ~ today] (数据修正)
     #   付费档 + 今天有数据 → 实时行情接口拉一次覆写（1请求全市场）
@@ -427,6 +437,36 @@ def run_now(
         logger.info("compute_enriched: skip (no new daily, no adj_factor changes)")
     _refresh_single_view(repo, "kline_enriched")
     _invalidate("enriched")
+
+    # 模拟盘结算 (缺口修复③): 依赖当日 enriched 落库。config.json 不存在 =
+    # 功能关闭零开销; 失败只记 state.last_error, 绝不阻断管道。
+    try:
+        from app.services import paper_trading
+
+        paper_result = paper_trading.settle(repo.store.data_dir, repo)
+        if paper_result.get("status") not in {"disabled", "skipped", "no-data"}:
+            emit("paper_trading", 90, f"模拟盘结算: {paper_result.get('status')}")
+            logger.info("paper trading settle: %s", paper_result.get("status"))
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("paper trading settle failed: %s", exc)
+
+    # 数据对账 (缺口修复④): 日K/分钟/股本三链交叉校验, 报告落盘
+    # data/reconciliation/latest.json; 违例只记录不阻断。
+    try:
+        from app.services import reconciliation
+
+        report = reconciliation.run_reconciliation(repo.store.data_dir)
+        if report.get("violations"):
+            logger.warning(
+                "reconciliation: %d violations (trade_date=%s)",
+                len(report["violations"]), report.get("trade_date"),
+            )
+            emit("reconciliation", 92,
+                 f"对账: {len(report['violations'])} 项违例")
+        else:
+            emit("reconciliation", 92, "对账全绿")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("reconciliation failed: %s", exc)
 
     # Step 2.3: 指数 / ETF 同步 — 物理分开存储；ETF 可复权，指数不复权。
     written_index_daily = 0
@@ -1089,6 +1129,25 @@ def start_scheduler(repo: KlineRepository, capset: CapabilitySet) -> AsyncIOSche
                             hour=depth_sched["hour"], minute=depth_sched["minute"],
                             timezone="Asia/Shanghai"),
         id="depth_finalize",
+        misfire_grace_time=3600,
+        replace_existing=True,
+    )
+
+    # 盘后: 分笔成交落盘归档 (15:35, 深市盘后定价 15:30 结束后) — 当日分笔
+    # 仅存于通达信服务器约 30 天且盘前维护窗口被清空, 本地 parquet 永久保留
+    def _tick_archive_eod():
+        from app.services import tick_archive
+
+        app_state = _get_app_state()
+        repo = getattr(app_state, "repo", None) if app_state else None
+        if repo:
+            tick_archive.archive_recent_eod(repo)
+
+    scheduler.add_job(
+        _tick_archive_eod,
+        trigger=CronTrigger(day_of_week="mon-fri", hour=15, minute=35,
+                            timezone="Asia/Shanghai"),
+        id="tick_archive_eod",
         misfire_grace_time=3600,
         replace_existing=True,
     )

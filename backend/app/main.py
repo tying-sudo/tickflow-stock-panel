@@ -31,6 +31,7 @@ from app.api import (
     mining,
     monitor_rules,
     overview,
+    paper,
     pipeline,
     regime,
     rps,
@@ -500,6 +501,7 @@ app.include_router(watchlist_groups.router)
 app.include_router(funds.router)
 app.include_router(screener.router)
 app.include_router(backtest.router)
+app.include_router(paper.router)
 app.include_router(mining.router)
 app.include_router(intraday.router)
 app.include_router(indices.router)

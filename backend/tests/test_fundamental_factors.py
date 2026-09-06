@@ -149,8 +149,77 @@ def test_snapshot_requires_announce_date(tmp_path: Path):
         "debt_to_asset_ratio": [40.0],
         "bps": [5.0],
     }).write_parquet(out / "part.parquet")
-    # 公告日缺失的行无法做点时门控, 视为无有效快照
+    # 公告日缺失且无 period_end 可兜底的行, 无法做点时门控, 视为无有效快照
     assert load_fundamental_snapshot(tmp_path) is None
+
+
+def test_snapshot_missing_announce_backfills_statutory_deadline(tmp_path: Path):
+    out = tmp_path / "financials" / "metrics"
+    out.mkdir(parents=True)
+    pl.DataFrame({
+        "symbol": ["600000.SH", "000001.SZ"],
+        # 新浪通道无公告日; Q1 → 4/30, 年报 → 次年 4/30
+        "period_end": ["2026-03-31", "2025-12-31"],
+        "announce_date": [None, "2026-03-10"],
+        "roe": [12.0, 8.0],
+        "gross_margin": [30.0, 25.0],
+        "net_margin": [5.0, 4.0],
+        "revenue_yoy": [8.0, 6.0],
+        "net_income_yoy": [6.0, 5.0],
+        "debt_to_asset_ratio": [40.0, 45.0],
+        "bps": [5.0, 6.0],
+    }).write_parquet(out / "part.parquet")
+    snapshot = load_fundamental_snapshot(tmp_path)
+    assert snapshot is not None
+    assert snapshot.height == 2
+    got = {
+        row["symbol"]: row["_announce"]
+        for row in snapshot.iter_rows(named=True)
+    }
+    assert got["600000.SH"] == date(2026, 4, 30)  # 派生: Q1 法定期限
+    assert got["000001.SZ"] == date(2026, 3, 10)  # 真实公告日优先
+
+
+def test_attach_gates_on_derived_deadline():
+    panel = _daily_panel(date(2026, 4, 1), 10, ("600000.SH",))
+    # 模拟 load_fundamental_snapshot 的派生产物: _announce = 4/30
+    snapshot = pl.DataFrame({
+        "symbol": ["600000.SH"],
+        "_announce": [date(2026, 4, 30)],
+        "roe": [15.0],
+        "bps": [5.0],
+        "revenue_yoy": [8.0],
+    }).sort(["symbol", "_announce"])
+    attached = attach_fundamental_factors(panel, snapshot, ["roe_latest"]).sort("date")
+    roe = attached["roe_latest"].to_list()
+    assert roe == [None] * 10  # 面板止于 4-10, 全部在 4-30 派生期限前不可见
+
+
+def test_statutory_deadline_same_day_tiebreak_prefers_newer_period():
+    # 年报(2025)与次年 Q1(2026)派生期限同为 2026-04-30: 报告期新者优先
+    panel = _daily_panel(date(2026, 4, 28), 8, ("600000.SH",))
+    snapshot = pl.DataFrame({
+        "symbol": ["600000.SH", "600000.SH"],
+        "_announce": [date(2026, 4, 30), date(2026, 4, 30)],
+        "roe": [9.0, 13.0],
+        "bps": [5.0, 5.5],
+        "revenue_yoy": [6.0, 9.0],
+    }).sort(["symbol", "_announce", "_period"]) if False else pl.DataFrame({
+        "symbol": ["600000.SH", "600000.SH"],
+        "_announce": [date(2026, 4, 30), date(2026, 4, 30)],
+        "roe": [9.0, 13.0],
+        "bps": [5.0, 5.5],
+        "revenue_yoy": [6.0, 9.0],
+    })
+    # join_asof backward 在同 key 撞日时取排序后的最后一行 → 手动保证新期在后
+    snapshot = snapshot.with_row_index("_tiebreak").sort(
+        ["symbol", "_announce", "_tiebreak"]
+    ).drop("_tiebreak")
+    attached = attach_fundamental_factors(panel, snapshot, ["roe_latest"]).sort("date")
+    roe = attached["roe_latest"].to_list()
+    assert roe[0] is None       # 4-28 (期限前)
+    assert roe[2] is None       # 4-30 当天仍不可见 (严格大于)
+    assert roe[3] == 13.0       # 5-1 起最新报告期生效
 
 
 def test_fundamental_factor_names_are_catalogued():

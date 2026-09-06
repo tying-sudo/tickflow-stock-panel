@@ -70,6 +70,9 @@ _EXECUTION_COLUMNS = frozenset({
 })
 _LIMIT_BASE_COLUMNS = frozenset({"raw_close", "raw_high", "raw_low"})
 _INSTRUMENT_COLUMNS = frozenset({"name", "total_shares", "float_shares"})
+# 不落 enriched 存储、由矩阵加载器合成的字段 (见 _resolve_matrix_storage_fields);
+# 解析计划时必须显式保留, 否则被 _resolve_base_columns 的存储白名单丢弃。
+_MATRIX_SYNTHESIZED_FIELDS = frozenset({"price_limit_pct"})
 
 
 @dataclass(frozen=True)
@@ -274,6 +277,12 @@ class StrategyDependencyResolver:
             "signal_limit_up",
             "signal_limit_down",
         }
+        # price_limit_pct 不在 enriched 存储列里 (loader 侧由涨跌停规则合成,
+        # matrix.py _resolve_matrix_storage_fields 特判), 若不显式带回
+        # matrix_columns 会在 _resolve_base_columns 的存储白名单处被丢弃,
+        # 策略运行时 matrix_feature(market, "price_limit_pct") 报 unsupported
+        # (2026-09-06 实锤: near_limit_up 等涨停系 matrix 策略全挂)。
+        matrix_columns |= required_features & _MATRIX_SYNTHESIZED_FIELDS
         return ResolvedFeaturePlan(
             base_columns=base_columns,
             intermediate_columns=frozenset(),
@@ -569,6 +578,9 @@ class StrategyBacktestResult:
     trades: list[dict] = field(default_factory=list)
     per_symbol_stats: list[dict] = field(default_factory=list)
     strategy_info: dict = field(default_factory=dict)
+    # sim 末日 (通常=数据末日) 的入场信号快照: 撮合器不记录末日入场 (无后续
+    # bar 可持有), trades 看不到最新一天的信号; 模拟盘信号抽取依赖此字段。
+    last_day_entries: list[dict] = field(default_factory=list)
     elapsed_ms: float = 0.0
     error: str | None = None
 
@@ -650,6 +662,31 @@ class PreparedMatrixBacktest:
     reference_price: np.ndarray | None
     prepare_timing_ms: dict[str, float]
     compute_cache: MatrixComputeCache
+
+
+def _extract_last_day_entries(market, signals) -> list[dict]:
+    """信号矩阵末行的入场命中 → [{symbol, signal_id}]。
+
+    撮合器不记录 sim 末日 (无后续 bar 可持有) 的入场, trades 永远缺最新一天
+    信号; 模拟盘/选股型消费方从信号本体直接读取 (2026-09-06 缺口修复③)。
+    """
+    if market is None or signals is None or not market.shape[0]:
+        return []
+    entry = signals.entry[-1]
+    if entry is None or not entry.any():
+        return []
+    out: list[dict] = []
+    signal_ids = getattr(signals, "entry_signal_ids", None) or ()
+    codes = getattr(signals, "entry_signal_code", None)
+    for idx in np.flatnonzero(entry.astype(bool)):
+        code = -1
+        if codes is not None:
+            code = int(codes[-1, idx])
+        signal_id = None
+        if 0 <= code < len(signal_ids):
+            signal_id = signal_ids[code]
+        out.append({"symbol": str(market.symbols[idx]), "signal_id": signal_id})
+    return out
 
 
 class StrategyBacktestService:
@@ -986,6 +1023,7 @@ class StrategyBacktestService:
         t0 = time.perf_counter()
         run_id = uuid.uuid4().hex[:10]
         result_policy = result_policy or BacktestResultPolicy()
+        last_day_entries: list[dict] = []  # 矩阵分支填充 (见 _extract_last_day_entries)
 
         def _err(msg: str) -> StrategyBacktestResult:
             return StrategyBacktestResult(
@@ -1318,6 +1356,10 @@ class StrategyBacktestService:
                 entry_time_mask[start_id:stop_id],
                 exit_time_mask[start_id:stop_id],
             )
+            # 末日入场信号快照 (在切片对象被 del 前原样带出, 供模拟盘抽取)
+            last_day_entries = _extract_last_day_entries(
+                sim_market_data, sim_signal_matrix
+            )
             timing_ms["signals_score"] = round((time.perf_counter() - t_signal) * 1000, 1)
             if not sim_signal_matrix.entry.any():
                 return _err("在指定区间内未产生买入信号")
@@ -1435,6 +1477,10 @@ class StrategyBacktestService:
                 sim_signal_matrix,
                 entry_time_mask[start_id:stop_id],
                 exit_time_mask[start_id:stop_id],
+            )
+            # 末日入场信号快照 (在切片对象被 del 前原样带出, 供模拟盘抽取)
+            last_day_entries = _extract_last_day_entries(
+                sim_market_data, sim_signal_matrix
             )
             timing_ms["signals_score"] = round((time.perf_counter() - t_signal) * 1000, 1)
             if not sim_signal_matrix.entry.any():
@@ -1653,6 +1699,7 @@ class StrategyBacktestService:
                 else []
             ),
             strategy_info=strategy_info,
+            last_day_entries=last_day_entries,
             elapsed_ms=round(elapsed, 1),
         )
 
