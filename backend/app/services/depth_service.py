@@ -60,6 +60,10 @@ INTERVAL_HARD_MAX = 300.0
 class DepthService:
     """五档盘口 sealed 服务 — 单例。"""
 
+    # 盘后定版等待当日 enriched 的最长时间(秒): 默认 15:02 定版 + 68 分钟
+    # 上限 ≈ 16:10, 覆盖日K同步(15:20~15:45)与 daily_pipeline 落 enriched。
+    FINALIZE_WAIT_ENRICHED_TIMEOUT_S = 68 * 60
+
     def __init__(self) -> None:
         self._lock = threading.Lock()
         # 拉取+定版串行锁 (镜像 quote_service._fetch_lock): _fetch_and_seal 可能同时被
@@ -187,11 +191,13 @@ class DepthService:
         """手动触发一次修正(立即拉取 depth + 更新内存缓存)。
 
         不受监控开关限制 — 用户可随时手动修正一次。
-        返回 {"ok": bool, "count": int, "msg": str}
+        与 finalize 同语义但等待短(90s): 手动操作不宜久等, 超时按缓存日拉,
+        响应 msg 里提示。返回 {"ok": bool, "count": int, "msg": str}
         """
         if not self._has_capability():
             return {"ok": False, "count": 0, "msg": "无五档盘口能力(需 Pro+)"}
         try:
+            self._wait_for_today_enriched(timeout_s=90)
             self._fetch_and_seal(persist=True)  # 落盘, 刷新页面不丢
             with self._lock:
                 count = len(self._sealed_cache)
@@ -294,24 +300,27 @@ class DepthService:
     def _call_depth_batch(self, symbols: list[str]) -> dict:
         """按 depth5 provider 分流拉盘口, 返回 {symbol: MarketDepth}。
 
-        - tdx_gateway: TdxGatewayProvider.get_depth5 (内部 40 只/批 + TdxW/pytdx
-          双源容错), LAN 直连无限速; 失败记 warning 返回空, 本轮跳过 (轮询线程
-          下轮重试), 不静默回落 TickFlow — Free 档调用必 403, 只会刷错误日志。
-        - tickflow: tf.depth.batch 按 capset 的 batch 切片 + 节流。
+        - easy_tdx (现行): EasyTdxProvider.get_depth5 — serve 实例池 quotes
+          白名单子池, LAN 直连无限速; 失败记 warning 返回空, 本轮跳过 (轮询线程
+          下轮重试)。(tdx_gateway/VM102 分支已随源移除, 2026-09-05)
+        - tickflow: tf.depth.batch 按 capset 的 batch 切片 + 节流 — Free 档调用
+          必 403, 只会刷错误日志, 仅在显式配置时启用。
         """
         from app.services import preferences
 
-        if preferences.get_depth5_data_provider() == "tdx_gateway":
-            from app.plugins.tdx_gateway import provider as tdx_provider
+        provider_name = preferences.get_depth5_data_provider()
 
-            ok, reason = tdx_provider.availability()
+        if provider_name == "easy_tdx":
+            from app.plugins.easy_tdx import provider as easy_provider
+
+            ok, reason = easy_provider.availability()
             if not ok:
-                logger.warning("depth sealed: tdx_gateway 不可用(%s), 本轮跳过", reason)
+                logger.warning("depth sealed: easy_tdx 不可用(%s), 本轮跳过", reason)
                 return {}
             try:
-                return tdx_provider.TdxGatewayProvider().get_depth5(symbols)
+                return easy_provider.EasyTdxProvider().get_depth5(symbols)
             except Exception as e:  # noqa: BLE001
-                logger.warning("depth sealed: tdx_gateway 拉取失败, 本轮跳过: %s", e)
+                logger.warning("depth sealed: easy_tdx 拉取失败, 本轮跳过: %s", e)
                 return {}
 
         from app.tickflow.client import get_client
@@ -335,10 +344,52 @@ class DepthService:
         return result
 
     def finalize(self) -> None:
-        """盘后定版: 拉一次 + 落盘。"""
+        """盘后定版: 等当日 enriched 就绪后拉一次 + 落盘。
+
+        ⚠️ 2026-09-05 修复: 定版时刻 enriched 内存缓存可能仍是上一交易日
+        (当日日K 15:20+ 才落盘并刷新缓存, 定版默认 15:02 早于它) — 09-04 实测
+        定版名单=昨日涨停 46 只, 当日 124 只涨停里 66 只 join 不到封单,
+        连板梯队大片"待确认"。修复: 新交易日的定版等当日 enriched 就绪
+        (每 30s 重读缓存, 上限 FINALIZE_WAIT_ENRICHED_TIMEOUT_S), 就绪后
+        按当日名单定版。休市日(缓存=最近交易日)不等待, 直接定版(补跑语义)。
+        """
         if not self._has_capability():
             return
+        self._wait_for_today_enriched(timeout_s=self.FINALIZE_WAIT_ENRICHED_TIMEOUT_S)
         self._fetch_and_seal(persist=True)
+
+    def _wait_for_today_enriched(self, timeout_s: float) -> None:
+        """等待 enriched 内存缓存追上今天(新交易日定版前置条件)。
+
+        只在北京时间 [15:00, 24:00) 等待 — 收盘后当日 enriched 正在落盘路上
+        (日K同步 15:20~15:45)。盘前/跨日(含休市、周末 boot_check 补跑)等待
+        无意义: 当日 enriched 最早 15:20 才会出现, 直接按缓存日拉(旧行为)。
+        """
+        if not self._repo:
+            return
+        if cn_now().time() < dt_time(15, 0):
+            return
+        deadline = time.monotonic() + timeout_s
+        warned = False
+        while True:
+            enriched, enriched_date = self._repo.get_enriched_latest()
+            today = cn_today()
+            if enriched.is_empty() or (enriched_date and enriched_date >= today):
+                return
+            if time.monotonic() >= deadline:
+                logger.warning(
+                    "depth finalize: 等待当日 enriched 超时(%.0f 分钟), 按缓存日 %s 定版"
+                    " — 封单名单可能不完整(待确认)",
+                    timeout_s / 60, enriched_date,
+                )
+                return
+            if not warned:
+                logger.info(
+                    "depth finalize: enriched 缓存还是 %s(当日未就绪), 每 30s 重试等待",
+                    enriched_date,
+                )
+                warned = True
+            time.sleep(30)
 
     # ================================================================
     # 落盘

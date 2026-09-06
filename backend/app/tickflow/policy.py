@@ -311,9 +311,8 @@ _DATASET_CAP_MAP: tuple[tuple[str, Cap], ...] = (
     ("adj_factor", Cap.ADJ_FACTOR),
     ("minute", Cap.KLINE_MINUTE_BATCH),
     ("financial", Cap.FINANCIAL),
-    # 五档盘口: tdx_gateway 声明 depth5 数据集 (plugin.yaml / provider._DATASETS),
-    # 双源架构 (TdxW 快照 + pytdx quotes 兜底) 后真实可供 → 单只/批量一并补授,
-    # 解锁前端 hasDepth 徽标、连板梯队封单监控与 depth_service sealed 修正链。
+    # 五档盘口: 声明 depth5 数据集的自定义源 (如 easy_tdx plugin.yaml) 补授
+    # 单只/批量能力, 解锁前端 hasDepth 徽标、连板梯队封单监控与 depth sealed 链。
     ("depth5", Cap.DEPTH5),
     ("depth5", Cap.DEPTH5_BATCH),
 )

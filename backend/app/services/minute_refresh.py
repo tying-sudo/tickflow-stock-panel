@@ -119,11 +119,14 @@ class MinuteRefreshService:
     # ------------------------------------------------------------------
 
     def capability_ok(self) -> bool:
-        """Cap.INTRADAY_UNIVERSE (全量分钟) 存在。能力探测结果缓存在 app.state。
+        """Cap.INTRADAY_UNIVERSE (全量分钟) 存在; 自定义分钟源自带全量能力。
 
-        门控挂在稳态增量的主能力上; 全天修复轮用的 intraday.batch 与其
-        同属 Expert 档 (tiers.yaml), 目前两者必然同时持有。
+        能力探测结果缓存在 app.state。门控挂在稳态增量的主能力上; 全天修复轮
+        用的 intraday.batch 与其同属 Expert 档 (tiers.yaml), 同时持有。
+        自定义源 (easy_tdx 等) 由 provider 全量拉取, 不需要 TickFlow 能力。
         """
+        if self.custom_provider_active():
+            return True
         capset = getattr(self._app_state, "capabilities", None) if self._app_state else None
         if capset is None:
             return False
@@ -146,8 +149,8 @@ class MinuteRefreshService:
         if not preferences.get_minute_refresh_enabled():
             return "disabled"
         if self.custom_provider_active():
-            return "custom_minute_provider"
-        if not self.capability_ok():
+            pass  # 自定义分钟源: 能力由 provider 自带 (2026-09-05 起支持本服务驱动)
+        elif not self.capability_ok():
             return "capability"
         if not _in_continuous_session():
             return "outside_trading_hours"
@@ -230,6 +233,29 @@ class MinuteRefreshService:
         from app.services import kline_sync
 
         t0 = time.perf_counter()
+
+        # 自定义分钟源分支 (2026-09-05): 复用盘后同步链路 sync_and_persist_minute
+        # — 按实例池扇出 + per-symbol 水位线跳过 (fresh symbol 0 请求), 盘中
+        # 增量轮只补真正落后的标的; 写入幂等 (unique(symbol,datetime) 合并)。
+        if self.custom_provider_active():
+            with self._round_lock:
+                symbols = self._universe()
+                self._state.last_symbols = len(symbols)
+                if not symbols:
+                    self._state.last_error = "empty universe (instruments 未加载)"
+                    return
+                written = kline_sync.sync_and_persist_minute(
+                    symbols, self._repo, None, days=1,
+                )
+                self._state.last_requests = 0
+                self._state.last_mode = "custom_increment"
+                self._state.last_rows = written
+            self._state.rounds += 1
+            self._state.last_round_at = time.time()
+            self._state.last_round_ms = (time.perf_counter() - t0) * 1000
+            self._state.last_error = None
+            return
+
         mode = self._select_mode()
         with self._round_lock:
             if mode == "increment":
@@ -301,7 +327,7 @@ class MinuteRefreshService:
 
     def trigger_manual_round(self) -> dict[str, Any]:
         """手动触发一轮 (无视时段门控, 但仍受能力/插件门控); 供状态页「立即刷新」。"""
-        if self.custom_provider_active() or not self.capability_ok():
+        if not self.capability_ok():
             return {"ok": False, "reason": self._gate_reason() or "capability"}
         threading.Thread(target=self._run_round, daemon=True, name="minute-refresh-manual").start()
         return {"ok": True}

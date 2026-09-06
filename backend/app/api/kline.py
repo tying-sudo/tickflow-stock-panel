@@ -1381,37 +1381,58 @@ import concurrent.futures as _cf
 _long_task_executor = _cf.ThreadPoolExecutor(max_workers=2, thread_name_prefix="long-task")
 
 
-# ===== 分笔成交 (tick) — 真实成交记录, 通达信分笔协议经 TDX 网关 =====
+# ===== 分笔成交 (tick) — 真实成交记录, 通达信分笔协议经 easy-tdx 实例池 =====
 
 @router.get("/transactions")
 def get_transactions(
     request: Request,
     symbol: str = Query(..., description="标的代码"),
-    trade_date: date | None = Query(None, alias="date", description="交易日期; 分笔源仅提供最近交易日"),
+    trade_date: date | None = Query(None, alias="date", description="交易日期; 历史分笔约 30 天内可查"),
+    tail: int = Query(0, ge=0, description=">0 时走尾部增量: 返回第 tail 笔之后的新增 (消抖轮询)"),
+    date_hint: str | None = Query(None, description="客户端已持有的数据日期 (tail 模式下服务端校验)"),
 ):
-    """某标的最近交易日的真实分笔成交。
+    """某标的真实分笔成交 (最近交易日或约 30 天内历史日)。
 
     返回逐笔明细 (时间/价格/成交量(手)/笔数/方向) + tick 聚合的分钟成交量柱 +
-    与日K的一致性核对。数据源为通达信分笔协议 (经 TDX 网关):
-    - 公共行情服务器不提供历史分笔, 非最近交易日如实返回 404, 绝不以模拟数据代偿
+    与日K的一致性核对。数据源为通达信分笔协议 (经 easy-tdx 实例池):
+    - 当日端点走 quotes 白名单子池, 历史端点 /transaction/history 全池并发
+    - 超出回溯范围的历史日如实返回 404, 绝不以模拟数据代偿
     - 时间精度为分钟级 (TDX 免费分笔协议限制; 毫秒级逐笔需 Level-2 数据源)
     - 含集合竞价段 (09:15-09:25) 与深市盘后定价段 (15:05-15:30) 单独标识
+    - tail>0: 轻量增量模式, 只回 {date, tick_count, full, appended},
+      无新成交时响应近空 — 前端 0.5s 轮询不再整包刷新 (消抖, 2026-09-05)
     """
     repo = request.app.state.repo
-    from app.plugins.tdx_gateway import provider as tdx_provider
+    from app.plugins.easy_tdx import provider as easy_provider
     from app.services import tick_transactions
 
-    ok, reason = tdx_provider.availability()
+    ok, reason = easy_provider.availability()
     if not ok:
-        raise HTTPException(status_code=403, detail=f"tick 成交数据需要 TDX 网关: {reason}")
+        raise HTTPException(status_code=503, detail=f"tick 成交数据需要 easy-tdx 实例池: {reason}")
 
     asset_type = repo.resolve_asset_type(symbol)
     stock_info = _get_stock_info(repo, symbol) if asset_type == "stock" else _get_asset_info(repo, symbol, asset_type)
     stock_name = stock_info.get("name")
 
+    if trade_date is None:
+        # 无日期 → 实时缓存服务 (0.5s 节流尾页增量, 前端 500ms 轮询命中缓存秒回)
+        from app.services.live_tick_service import LiveTickService
+
+        try:
+            if tail > 0:
+                return LiveTickService.get().transactions_tail(
+                    repo, symbol, tail, date_hint, stock_name,
+                )
+            return LiveTickService.get().transactions(repo, symbol, stock_name)
+        except tick_transactions.TickUnavailable as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        except Exception as e:
+            logger.exception("transactions live failed: %s", symbol)
+            raise HTTPException(status_code=502, detail=f"tick 通道失败: {e}") from e
+
     try:
         return tick_transactions.build_transactions(
-            repo, symbol, trade_date.isoformat() if trade_date else None, stock_name,
+            repo, symbol, trade_date.isoformat(), stock_name,
         )
     except tick_transactions.TickUnavailable as e:
         raise HTTPException(status_code=404, detail=str(e)) from e

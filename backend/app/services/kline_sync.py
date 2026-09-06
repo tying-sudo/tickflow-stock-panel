@@ -1146,6 +1146,65 @@ def _earliest_minute_datetime(repo: KlineRepository, table: str = "kline_minute"
     return None
 
 
+def _expected_minute_watermark(now: datetime) -> datetime:
+    """最近一根"应已存在"的分钟 bar 时间 (北京墙钟, A 股时段近似)。
+
+    per-symbol 增量跳过用: 本地 max(datetime) ≥ 此水位的 symbol 不再发请求。
+    长假近似: 假后首日 watermark 落在节假日(无人有数据) → 全量拉一轮空
+    (源返回 0 行不写盘), 可接受。
+    """
+    if now.weekday() >= 5:  # 周末 → 上周五 15:00
+        return datetime.combine(
+            now.date() - timedelta(days=now.weekday() - 4), datetime.min.time()
+        ).replace(hour=15)
+    hm = now.hour * 60 + now.minute
+    if hm < 9 * 60 + 31:  # 盘前 → 上一交易日 15:00 (周一回退 3 天)
+        back = 3 if now.weekday() == 0 else 1
+        return datetime.combine(now.date() - timedelta(days=back), datetime.min.time()).replace(hour=15)
+    if 11 * 60 + 30 < hm <= 13 * 60:  # 午休 → 上午定格
+        return now.replace(hour=11, minute=30, second=0, microsecond=0)
+    if hm > 15 * 60:  # 收盘后 → 当日 15:00
+        return now.replace(hour=15, minute=0, second=0, microsecond=0)
+    return now - timedelta(minutes=2)  # 盘中: 源延迟余量
+
+
+def _minute_watermarks(repo: KlineRepository, table: str,
+                       start: datetime, end: datetime) -> dict[str, datetime]:
+    """窗口内各 symbol 的本地分钟最新时间 (只扫窗口 date= 分区, 不扫全库)。
+
+    返回 {} = 无分区/扫描失败 → 调用方退化为全量拉取 (旧行为)。
+    """
+    root = repo.store.data_dir / table
+    if not root.exists():
+        return {}
+    d0 = (start - timedelta(days=3)).date()
+    d1 = end.date()
+    files: list[str] = []
+    for p in root.iterdir():
+        name = p.name
+        if not (p.is_dir() and name.startswith("date=")):
+            continue
+        try:
+            day = date.fromisoformat(name[5:])
+        except ValueError:
+            continue
+        if d0 <= day <= d1:
+            files.extend(str(f) for f in p.glob("*.parquet"))
+    if not files:
+        return {}
+    try:
+        df = (
+            pl.scan_parquet(files)
+            .group_by("symbol")
+            .agg(pl.col("datetime").max().alias("max_dt"))
+            .collect()
+        )
+        return dict(zip(df["symbol"].to_list(), df["max_dt"].to_list()))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("minute watermark scan failed (%s): %s", table, e)
+        return {}
+
+
 def _cleanup_null_datetime_minute(repo: KlineRepository) -> None:
     """检测并清除 datetime 全为 null 的旧版分钟 K 数据(迁移用)。"""
     minute_dir = repo.store.data_dir / "kline_minute"
@@ -1262,7 +1321,10 @@ def sync_and_persist_minute(
     # 迁移:旧版按 symbol= 分区转为 date= 分区
     _migrate_symbol_to_date_partition(repo)
 
-    now = datetime.now()
+    # 北京墙钟 (naive): parquet/provider 的分钟 datetime 均为北京墙钟。
+    # ⚠️ 容器 TZ=UTC — 此前裸 datetime.now() 是 UTC, end_time 比北京慢 8h,
+    # 盘后运行会截掉当天 14:00+ 的 bar (2026-09-04 修复)。
+    now = cn_now().replace(tzinfo=None)
 
     # 分流: 股票与 ETF 分钟数据分层存储 (kline_minute / kline_etf_minute),
     # 拉取路由 (custom provider 按标的类型走不同接口) 与落盘目录都必须分开。
@@ -1277,13 +1339,20 @@ def sync_and_persist_minute(
     if etf_syms:
         groups.append(("etf", etf_syms))
 
-    limit = resolve_limit(
-        capset,
-        Cap.KLINE_MINUTE_BATCH,
-        default_batch=100,
-        default_rpm=30,
-        default_rpm_when_unset=False,
-    )
+    if minute_is_custom:
+        # custom 源 (easy_tdx): sync_minute_batch 的 batch/rpm 限速只作用于
+        # TickFlow 付费路径, 此处不解析 capset (裸调用/无 Key 场景 capset 可能为 None)
+        from types import SimpleNamespace
+
+        limit = SimpleNamespace(batch=10_000, rpm=10_000)
+    else:
+        limit = resolve_limit(
+            capset,
+            Cap.KLINE_MINUTE_BATCH,
+            default_batch=100,
+            default_rpm=30,
+            default_rpm_when_unset=False,
+        )
 
     segment_days = preferences.get_minute_sync_segment_days()
     total_written = 0
@@ -1319,6 +1388,28 @@ def sync_and_persist_minute(
 
         minute_dir = repo.store.data_dir / table
         written_box = [0]
+
+        # per-symbol 增量跳过 (2026-09-04, 用户规则"已落库不重复拉"):
+        # 默认增量模式下, 本地已拉到期望水位的 symbol 完全不发请求;
+        # 拉取窗口收紧到最落后 symbol 的水位。extend/force_full 模式不跳过。
+        if not extend_backward and not force_full_days:
+            expected = _expected_minute_watermark(now)
+            have = _minute_watermarks(repo, table, start_time, end_time)
+            if have:
+                stale = [s for s in group_syms
+                         if (m := have.get(s)) is None or m < expected]
+                skipped = len(group_syms) - len(stale)
+                if skipped:
+                    logger.info(
+                        "sync_minute[%s]: %d/%d symbols fresh (watermark %s) — skip fetch",
+                        table, skipped, len(group_syms), expected,
+                    )
+                if not stale:
+                    continue
+                stale_marks = [have[s] for s in stale if have.get(s) is not None]
+                if stale_marks:
+                    start_time = min(stale_marks)  # 覆盖最落后 symbol 的缺口起点
+                group_syms = stale
 
         def _persist(seg_df: pl.DataFrame, _dir=minute_dir, _box=written_box) -> None:
             # 单股自动补齐可能与另一个补齐请求同时写同一日期分区。Windows 不允许

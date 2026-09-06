@@ -209,48 +209,72 @@ def get_depth5(request: Request, symbol: str = Query(..., description="标的代
     """单只五档盘口快照 (卖五..买五, 价格+量)。
 
     数据源优先级:
-      1. TDX 网关 (VM 通达信, 无套餐限制) — 实时快照的 Buyp/Buyv/Sellp/Sellv 五档
+      1. easy-tdx 实例池 (LAN 直连, quotes 白名单子池, 无套餐限制) — 现行默认
       2. TickFlow depth (需 DEPTH5 能力, Pro+ 套餐)
-    两者都不可用时返回 403, 前端据此显示降级提示。
+    两者都不可用时返回 403/502, 前端据此显示降级提示。
+    (tdx_gateway/VM102 冷备已随源移除, 2026-09-05)
     """
-    # ---- 1. TDX 网关 (优先) ----
-    from app.plugins.tdx_gateway import provider as tdx_provider
+    def _normalize_book(data: dict) -> dict | None:
+        # 与 /api/kline/depth5 同一契约: asks 升序 (卖1最低),
+        # bids 降序 (买1最高) — 不依赖源内顺序; 档位数自适应
+        # (标准协议当前 5 档, 未来 L2 十档时自动透传 10 档)。
+        def levels(prices, volumes, *, reverse: bool) -> list[dict]:
+            pairs = []
+            for pr, v in zip(list(prices or []), list(volumes or [])):
+                try:
+                    pr_f, v_f = float(pr or 0), float(v or 0)
+                except (TypeError, ValueError):
+                    continue
+                if pr_f > 0:
+                    pairs.append((pr_f, v_f))
+            pairs.sort(key=lambda x: x[0], reverse=reverse)
+            return [{"price": pr, "volume": v} for pr, v in pairs[:10]]
 
-    tdx_ok, tdx_reason = tdx_provider.availability()
-    if tdx_ok:
+        asks = levels(data.get("ask_prices"), data.get("ask_volumes"), reverse=False)
+        bids = levels(data.get("bid_prices"), data.get("bid_volumes"), reverse=True)
+        if asks or bids:
+            return {"asks": asks, "bids": bids}
+        return None
+
+    # ---- 1. easy-tdx 实例池 (现行默认, 2026-09-04 起) ----
+    # 盘中走实时缓存服务 (0.5s 节流, 前端 500ms 轮询命中缓存秒回)
+    from app.services import preferences
+
+    from app.plugins.easy_tdx import provider as easy_provider
+
+    easy_detail: str | None = None
+    easy_ok, easy_reason = easy_provider.availability()
+    if easy_ok:
         try:
-            data = tdx_provider.TdxGatewayProvider().get_depth5([symbol]).get(symbol)
-            if data:
-                # 与 /api/kline/depth5 同一契约: asks 升序 (卖1最低),
-                # bids 降序 (买1最高) — 不依赖源内顺序; 档位数自适应
-                # (TdxW Quant 当前 5 档, 未来 L2 十档时自动透传 10 档)。
-                def levels(prices, volumes, *, reverse: bool) -> list[dict]:
-                    pairs = []
-                    for pr, v in zip(list(prices or []), list(volumes or [])):
-                        try:
-                            pr_f, v_f = float(pr or 0), float(v or 0)
-                        except (TypeError, ValueError):
-                            continue
-                        if pr_f > 0:
-                            pairs.append((pr_f, v_f))
-                    pairs.sort(key=lambda x: x[0], reverse=reverse)
-                    return [{"price": pr, "volume": v} for pr, v in pairs[:10]]
+            from app.services.live_tick_service import LiveTickService
 
-                asks = levels(data.get("ask_prices"), data.get("ask_volumes"), reverse=False)
-                bids = levels(data.get("bid_prices"), data.get("bid_volumes"), reverse=True)
-                if asks or bids:
-                    return {"symbol": symbol, "asks": asks, "bids": bids,
-                            "source": "tdx_gateway", "ts": data.get("timestamp")}
+            data = LiveTickService.get().depth5(symbol)
         except Exception as e:  # noqa: BLE001
-            logger.warning("depth5 via TDX gateway failed (%s): %s", symbol, e)
-    elif symbol:
-        logger.debug("depth5 TDX gateway unavailable: %s", tdx_reason)
+            data = None
+            easy_detail = str(e)
+            logger.warning("depth5 via live service failed (%s): %s", symbol, e)
+        if data:
+            book = _normalize_book(data)
+            if book:
+                return {"symbol": symbol, **book,
+                        "source": "easy_tdx", "ts": data.get("timestamp")}
+            easy_detail = "无五档快照 (停牌/无行情/盘前维护窗口)"
+    else:
+        easy_detail = easy_reason
+        logger.debug("depth5 easy-tdx unavailable: %s", easy_reason)
 
-    # ---- 2. TickFlow (需 DEPTH5 能力) ----
+    # ---- 2. 兜底 ----
+    # easy_tdx 是主源且已尝试失败时, 不再落到 TickFlow 免费档 (必 403,
+    # "权限不足" 掩盖真实原因 — 盘前维护窗口/服务器空响应等), 如实 502。
+    if preferences.get_depth5_data_provider() != "tickflow":
+        detail = f"五档盘口暂时不可用 — easy-tdx: {easy_detail}"
+        raise HTTPException(status_code=502, detail=detail)
+
+    # ---- TickFlow (需 DEPTH5 能力) ----
     capset = getattr(request.app.state, "capabilities", None)
     from app.tickflow.capabilities import Cap
     if capset is None or not capset.has(Cap.DEPTH5):
-        detail = "五档盘口不可用: TDX 网关未配置 且 当前套餐无五档权限 (需 Pro+)"
+        detail = "五档盘口不可用: easy-tdx 不可用 且 当前套餐无五档权限 (需 Pro+)"
         raise HTTPException(status_code=403, detail=detail)
 
     from app.tickflow.client import get_client

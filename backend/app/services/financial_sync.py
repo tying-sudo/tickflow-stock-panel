@@ -185,6 +185,26 @@ def _merge_report_history(*frames: pl.DataFrame) -> pl.DataFrame:
     )
 
 
+def _expected_latest_period(now=None) -> str:
+    """当前时点"应已普遍披露"的最新报告期 (ISO, 按法定披露截止日):
+
+    一季报 04-30 / 半年报 08-31 / 三季报 10-31 披露完毕; 10 月底后三季报
+    (09-30) 就是最新期, 直到次年 4 月底都维持 (年报 12-31 与 Q1 同窗,
+    不抬预期)。[5,8) 月→03-31, 8/31..10/31→06-30, 其余→上年 09-30。
+    """
+    import datetime as _dt
+
+    today = now or _dt.date.today()
+    m, y = today.month, today.year
+    if 5 <= m < 8:
+        return f"{y}-03-31"
+    if (m == 8 and today.day >= 31) or m == 9:
+        return f"{y}-06-30"
+    if 10 <= m < 12:
+        return f"{y}-09-30"
+    return f"{y - 1}-09-30"
+
+
 def _sync_history_table_for_symbols(
     table: str,
     symbols: list[str],
@@ -195,20 +215,41 @@ def _sync_history_table_for_symbols(
 
     与 shares 同一模式。若改为 latest_only 全量覆盖, 历史各期会在每次同步时
     被冲掉, 财务因子将永远只有单期快照, 任何回测都是未来函数。
+
+    增量跳过 (2026-09-04, 用户规则"已落库不重复拉"): 本地 max(period_end)
+    已达当前应披露期 (_expected_latest_period) 的 symbol 完全不发请求;
+    全部新鲜 → 本轮 0 请求。新季报披露窗后首轮自动全市场补 1 期。
     """
     existing = get_financial_df(data_dir, table)
     if existing.is_empty() or not {"symbol", "period_end"} <= set(existing.columns):
         return _sync_table(table, symbols, data_dir, capset, latest_only=False)
 
-    existing_symbols = set(existing["symbol"].drop_nulls().to_list())
-    missing_symbols = [symbol for symbol in symbols if symbol not in existing_symbols]
+    expected = _expected_latest_period()
+    have_max: dict[str, str] = {}
+    for sym, period in existing.select("symbol", "period_end").iter_rows():
+        if sym and period:
+            p = str(period)[:10]
+            if sym not in have_max or p > have_max[sym]:
+                have_max[sym] = p
+
+    missing_symbols = [s for s in symbols if s not in have_max]
+    stale_symbols = [s for s in symbols if s in have_max and have_max[s] < expected]
+    fresh_n = len(symbols) - len(missing_symbols) - len(stale_symbols)
+    logger.info(
+        "sync_%s incremental: %d fresh (>=%s) skip, %d stale, %d new — fetch %d",
+        table, fresh_n, expected, len(stale_symbols), len(missing_symbols),
+        len(stale_symbols) + len(missing_symbols),
+    )
+
     missing_history = (
         _fetch_table(table, missing_symbols, capset, latest_only=False)
         if missing_symbols
         else pl.DataFrame()
     )
-    current_symbols = [symbol for symbol in symbols if symbol in existing_symbols]
-    latest = _fetch_table(table, current_symbols, capset, latest_only=True)
+    latest = _fetch_table(table, stale_symbols, capset, latest_only=True)
+    if missing_history.is_empty() and latest.is_empty():
+        logger.info("sync_%s: nothing to fetch — all fresh", table)
+        return 0
     merged = _merge_report_history(existing, missing_history, latest)
     return _write_table(table, merged, data_dir)
 
@@ -442,14 +483,28 @@ class FinancialScheduler:
             rows = fn(self._data_dir, self._capset)
             self._record_sync(table)
             return {table: rows}
-        # 全部同步
+        # 全部同步: shares 走 TDX 通道 (/finance, 端口锁串行), 与新浪 f10 四表
+        # 资源池独立 → 并行执行 (2026-09-05 提速: 总耗时 = max(新浪表, shares)
+        # 而非二者之和). 新浪四表保持串行 (共享 31 并发额度与新浪限流预算).
+        from concurrent.futures import ThreadPoolExecutor
+
         symbols = _get_symbols(self._data_dir)
         result: dict[str, int] = {}
-        for t in FINANCIAL_TABLES:
-            result[t] = _sync_history_table_for_symbols(
-                t, symbols, self._data_dir, self._capset
+
+        def _sync_shares_bg() -> int:
+            return _sync_history_table_for_symbols(
+                "shares", symbols, self._data_dir, self._capset
             )
-            self._record_sync(t)
+
+        with ThreadPoolExecutor(max_workers=1) as bg:
+            shares_future = bg.submit(_sync_shares_bg)
+            for t in ("metrics", "income", "balance_sheet", "cash_flow"):
+                result[t] = _sync_history_table_for_symbols(
+                    t, symbols, self._data_dir, self._capset
+                )
+                self._record_sync(t)
+            result["shares"] = shares_future.result()
+        self._record_sync("shares")
         _refresh_financials_views(self._data_dir)
         return result
 

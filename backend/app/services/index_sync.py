@@ -26,6 +26,44 @@ logger = logging.getLogger(__name__)
 _EXCHANGES = ["SH", "SZ", "BJ"]
 
 
+def _fetch_daily_chunk(
+    chunk: list[str],
+    *,
+    asset_type: str,
+    count: int | None,
+    start_time: datetime,
+    end_time: datetime,
+    on_chunk_done: Callable[[int, int], None] | None = None,
+) -> pl.DataFrame:
+    """单 chunk 指数/ETF 日K取数路由: 日K偏好为自定义源时走 provider, 否则 TickFlow。
+
+    2026-09-04 修复: capability 门禁按 custom 源放行, 但本阶段原本硬连
+    TickFlow klines.batch, 切 easy_tdx 后指数/ETF 日K持续静默拉空
+    (完整性修复任务 0 行、实时开关被门禁锁死的根因)。
+    asset_type 透传给 provider (easy_tdx 指数 vol 不 /100, 股票/ETF /100)。
+    """
+    provider_name = preferences.get_daily_data_provider()
+    if provider_name != "tickflow":
+        from app.data_providers import custom as custom_sources
+
+        if custom_sources.provider_has_dataset(provider_name, "daily"):
+            return custom_sources.get_provider(provider_name).get_daily(
+                chunk,
+                start_time=start_time,
+                end_time=end_time,
+                asset_type=asset_type,
+                on_chunk_done=on_chunk_done,
+            )
+    return kline_sync.sync_daily_batch(
+        chunk,
+        count=count,
+        batch_size=None,
+        start_time=start_time,
+        end_time=end_time,
+        on_chunk_done=on_chunk_done,
+    )
+
+
 def _quotes_to_index_instruments(resp) -> pl.DataFrame:
     """将 TickFlow quotes 响应(get_by_universes)规范为指数 instruments。
 
@@ -231,12 +269,13 @@ def sync_and_persist_index_daily(
     chunks = chunked(symbols, batch_size)
     for i, chunk in enumerate(chunks):
         sleep_between_batches(i, limit.rpm)
-        raw = kline_sync.sync_daily_batch(
+        raw = _fetch_daily_chunk(
             chunk,
+            asset_type="index",
             count=count,
-            batch_size=None,
             start_time=start_time,
             end_time=end_time,
+            on_chunk_done=on_chunk_done,
         )
         if raw.is_empty():
             continue
@@ -324,10 +363,10 @@ def sync_and_persist_etf_daily(
     factors = _load_etf_factors(repo)
     for i, chunk in enumerate(chunks):
         sleep_between_batches(i, limit.rpm)
-        raw = kline_sync.sync_daily_batch(
+        raw = _fetch_daily_chunk(
             chunk,
+            asset_type="etf",
             count=count,
-            batch_size=None,
             start_time=start_time,
             end_time=end_time,
         )

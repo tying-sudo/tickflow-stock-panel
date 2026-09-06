@@ -1,30 +1,22 @@
-"""真实 tick 级分笔成交 (两个数据源, 全部为真实成交记录, 严禁模拟/随机/占位)。
+"""真实 tick 级分笔成交 (easy-tdx + 本地归档, 全部为真实成交记录, 严禁模拟/随机/占位)。
 
-数据源 A — 通达信分笔协议 (经 TDX LAN Gateway pytdx 通道):
-  - 仅最近交易日可用 (公共 TDX 行情服务器不提供历史分笔)
-  - 时间精度为分钟级 (HH:MM); 含方向 (买/卖/中性)
+数据源 — 通达信分笔协议 (经 easy-tdx serve 实例池, 2026-09-04 起替代 VM102 TdxW 网关):
+  - 当日端点: 最近交易日可用 (仅白名单 4 台主机有数据, provider quotes 子池路由)
+  - 历史端点: /transaction/history 可回溯 ≥30 天 (实测 2026-09-04), 全池并发
+  - 时间精度为分钟级 (HH:MM); 含方向 (买/卖/中性); 无成交笔数字段 (num=0)
   - 包含集合竞价段 (09:15-09:25) 与深市盘后定价交易段 (15:05-15:30)
 
-数据源 B — 通达信官方 g4tic 全市场分笔打包 (普及版会员数据通道):
-  - URL: tdx.com.cn/products/data/data/g4tic/{YYYYMMDD}.zip (~100MB/日)
-  - VM102 本地已存 2025-07-01..2026-05-18 共 212 个交易日; 其余日期可后台补下
-  - 时间为 Δt 计数×校准单位的推断值, 秒级粒度 (与官方 1 分钟K聚合同源, 跨标的校验误差<1%)
-  - 无买卖方向字段; 与 1 分钟K完全同源 → 与日K一致性极高
+本地归档 — tick_archive (盘后全市场落盘, 2026-09-04 起): 读取归档优先, 永久保留;
+30 天前的未归档日期如实 404 (g4tic/VM102 通道已随 tdx_gateway 源一并移除, 2026-09-05)。
 
-日期路由: 无 date / 最近交易日 → 数据源 A; 其他日期 → 数据源 B (未下载时报 404 并
-支持后台补下载)。量纲统一: 成交量=手, 金额=元, 价格=元。
+日期路由: 无 date / 最近交易日 → 当日端点; 其他日期 → 历史端点。
+量纲统一: 成交量=手, 金额=元, 价格=元。
 """
 from __future__ import annotations
 
-import json
 import logging
-import urllib.error
-import urllib.request
-from collections import defaultdict
 
 logger = logging.getLogger(__name__)
-
-_TICK_PAGE_COUNT = 40000  # 桥接内部按 ~1800/页自动翻页, 覆盖全天 (活跃股可达 1万+ 笔)
 
 # buyorsell → 方向标签 (TDX 分笔协议)
 _DIRECTION_LABELS = {
@@ -44,74 +36,46 @@ class TickUnavailable(RuntimeError):
         self.code = code
 
 
-def _gateway_request(path: str, payload: dict, timeout: float = 120) -> dict:
-    from app.plugins.tdx_gateway.provider import gateway_url, get_api_key
+def normalize_live_rows(rows: list[dict]) -> list[dict]:
+    """easy-tdx serve 分笔行 {datetime, price, vol, buyorsell} → 旧契约字段。
 
-    token = get_api_key()
-    if not token:
-        raise TickUnavailable("TDX_GATEWAY_TOKEN 未配置")
-    req = urllib.request.Request(
-        gateway_url() + path,
-        data=json.dumps(payload).encode(),
-        headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return json.loads(resp.read())
-    except urllib.error.HTTPError as e:
-        body = e.read().decode("utf-8", "replace")
-        try:
-            detail = json.loads(body)
-        except (ValueError, TypeError):
-            detail = {"detail": body[:200]}
-        # 网关业务错误 (404 g4_not_downloaded 等) → 带错误码上抛
-        inner = detail if isinstance(detail, dict) and "error" in detail else None
-        if inner:
-            raise TickUnavailable(
-                str(detail.get("hint") or detail.get("detail") or detail.get("error")),
-                code=str(detail.get("error")),
-            ) from e
-        raise TickUnavailable(f"tick 网关 HTTP {e.code}: {body[:200]}") from e
+    当日端点 datetime 日期按今天拼接不可信, 但 HH:MM 时间部分可信;
+    真实交易日由 _pick_tick_date 成交量匹配判定。direction 字符串同步给出,
+    供归档落盘直接携带方向 (upsert/EOD 路径不经过 _normalize_tdx_ticks)。
+    """
+    out: list[dict] = []
+    for r in rows:
+        dt = str(r.get("datetime") or "")
+        bos = r.get("buyorsell")
+        out.append({
+            "time": dt[11:16] if len(dt) >= 16 else "",
+            "price": r.get("price"),
+            "volume": r.get("vol"),        # 手
+            "num": 0,                      # easy_tdx 协议解析无笔数字段
+            "buyorsell": bos,
+            "direction": _DIRECTION_LABELS.get(bos, "other"),
+        })
+    return out
 
-
-# ── 数据源 A: TDX 分笔协议 (最近交易日, 分钟级, 含方向) ──────────────────
 
 def fetch_raw_ticks(symbol: str, trade_date: str | None = None) -> list[dict]:
-    """拉取分笔原始 rows (time/price/volume/num/buyorsell)。空列表 = 数据源无数据。"""
-    payload: dict = {"symbols": [symbol], "kind": "ticks", "count": _TICK_PAGE_COUNT}
-    if trade_date:
-        payload["date"] = trade_date.replace("-", "")
-    data = _gateway_request("/v1/tickdata", payload)
-    rows = (data.get("rows") or {}).get(symbol) or []
-    # 桥接层错误标记 (不再静默吞异常)
-    bad = [r for r in rows if isinstance(r, dict) and "error" in r]
-    if bad and len(bad) == len(rows):
-        raise TickUnavailable(f"分笔通道错误: {bad[0].get('error')}")
-    return [r for r in rows if isinstance(r, dict) and "error" not in r]
+    """拉取分笔原始 rows (time/price/volume/num/buyorsell)。空列表 = 数据源无数据。
+
+    经 easy-tdx serve 实例池: trade_date=None → 当日端点 (白名单子池);
+    trade_date=历史日 → 历史端点 (全池)。
+    """
+    from app.plugins.easy_tdx.provider import EasyTdxError, EasyTdxProvider
+
+    try:
+        result = EasyTdxProvider().get_transactions(symbol, trade_date)
+    except EasyTdxError as exc:
+        raise TickUnavailable(f"easy-tdx 分笔通道错误: {exc}") from exc
+    return normalize_live_rows(result["rows"])
 
 
-def fetch_g4_ticks(symbol: str, trade_date: str) -> tuple[list[dict], dict]:
-    """g4tic 历史分笔。返回 (ticks, meta); 分笔包未下载 → TickUnavailable(code=g4_not_downloaded)。"""
-    data = _gateway_request("/v1/tickdata", {
-        "symbols": [symbol], "kind": "ticks_g4", "date": trade_date.replace("-", ""),
-    }, timeout=300)
-    rows = (data.get("rows") or {}).get(symbol) or []
-    meta = data.get("meta") or {}
-    if not rows:
-        raise TickUnavailable(
-            f"{trade_date} 的 g4tic 分笔包中无 {symbol} 的记录",
-            code="g4_symbol_missing",
-        )
-    return rows, meta
-
-
-def g4_download_start(symbol_date: str) -> dict:
-    return _gateway_request("/v1/g4dl", {"date": symbol_date, "action": "start"})
-
-
-def g4_download_status(symbol_date: str) -> dict:
-    return _gateway_request("/v1/g4dl", {"date": symbol_date, "action": "status"})
+# ── g4tic 历史分笔通道已移除 (2026-09-05, tdx_gateway/VM102 源下线) ──
+# 历史分笔由 easy-tdx /transaction/history (≥30 天) + 本地归档 (tick_archive,
+# 盘后全市场落盘永久保留) 承接; 30 天前未归档日期如实 404。
 
 
 # ── 日K一致性核对 ─────────────────────────────────────────────────────────
@@ -200,7 +164,13 @@ def _aggregate_minutes(ticks: list[dict]) -> list[dict]:
         })
         slot["volume"] += vol
         slot["amount"] += price * vol * 100
-        direction = _DIRECTION_LABELS.get(t.get("buyorsell"), "other")
+        raw_dir = t.get("buyorsell")
+        if raw_dir is None:  # 归档回读: 只有 direction 字符串
+            raw_dir = t.get("direction")
+        if isinstance(raw_dir, int):
+            direction = _DIRECTION_LABELS.get(raw_dir, "other")
+        else:
+            direction = raw_dir if raw_dir in ("buy", "sell") else "other"
         if direction == "buy":
             slot["buy_volume"] += vol
         elif direction == "sell":
@@ -264,30 +234,101 @@ def _normalize_tdx_ticks(raw: list[dict]) -> list[dict]:
 
 def build_transactions(repo, symbol: str, requested_date: str | None,
                        stock_name: str | None = None) -> dict:
-    """分笔成交完整响应。所有数据均为真实成交记录, 拿不到即抛 TickUnavailable。"""
+    """分笔成交完整响应。所有数据均为真实成交记录, 拿不到即抛 TickUnavailable。
+
+    读取优先级: 本地归档 (盘后落盘) → easy-tdx live (当日/历史端点, ≥30 天)。
+    live 成功且满足归档时机 (历史日 / 盘后) 时顺手懒缓存。
+    """
+    from app.services import tick_archive
+
+    archived = tick_archive.load_symbol(repo, symbol, requested_date)
+    if archived:
+        day = requested_date or tick_archive._cn_today_str()
+        return _build_from_archive(repo, symbol, day, archived, stock_name)
+
     if requested_date is None:
-        return _build_tdx(repo, symbol, None, stock_name)
-    try:
-        return _build_tdx(repo, symbol, requested_date, stock_name)
-    except TickUnavailable as tdx_err:
         try:
-            return _build_g4(repo, symbol, requested_date, stock_name)
-        except TickUnavailable as g4_err:
-            # 两源都拿不到: 报 g4 的错误 (带可操作的下载指引错误码)
-            raise g4_err from tdx_err
+            result = _build_tdx(repo, symbol, None, stock_name)
+        except TickUnavailable:
+            result = None
+        live_date = result.get("date") if result else None
+        if result and live_date:
+            # 归属明确: 盘中当日 → 返回 live; 盘后 (≥15:35) 顺手归档当日
+            # (EOD job 失联兜底); 盘前维护窗口 live_date 可能误归属昨日, 不归档
+            if live_date == tick_archive._cn_today_str():
+                tick_archive.lazy_archive_if_due(repo, symbol, live_date, result.get("ticks") or [])
+            return result
+        # live 空/维护窗口垃圾 (无法归属交易日, 如 09:09 清空后残留几条竞价)
+        # → 回退本地归档最近一日
+        dates = tick_archive.archived_dates(repo)
+        for day in reversed(dates):
+            rows = tick_archive.load_symbol(repo, symbol, day)
+            if rows:
+                return _build_from_archive(repo, symbol, day, rows, stock_name)
+        if result:
+            return result
+        raise TickUnavailable("行情服务器未返回分笔数据, 且本地无归档 (可能非交易时段)")
+
+    result = _build_tdx(repo, symbol, requested_date, stock_name)
+    tick_archive.lazy_archive_if_due(repo, symbol, requested_date, result.get("ticks") or [])
+    return result
+
+
+def build_response_from_ticks(repo, symbol: str, day: str | None, ticks: list[dict],
+                              stock_name: str | None = None,
+                              source: str = "local_archive",
+                              requested_date: str | None = None) -> dict:
+    """归一化 ticks (time/price/volume/num/direction) → 完整响应契约。"""
+    minute_volumes = _aggregate_minutes(ticks)
+    segments = {
+        "auction": any(m["segment"] == "auction" for m in minute_volumes),
+        "after_hours": any(m["segment"] == "after_hours" for m in minute_volumes),
+    }
+    return {
+        "symbol": symbol,
+        "name": stock_name,
+        "date": day,
+        "requested_date": requested_date,
+        "source": source,
+        "precision": "minute",
+        "tick_count": len(ticks),
+        "ticks": ticks,
+        "minute_volumes": minute_volumes,
+        "segments": segments,
+        "consistency": _consistency_check(repo, symbol, day, ticks),
+    }
+
+
+def _build_from_archive(repo, symbol: str, day: str, rows: list[dict],
+                        stock_name: str | None) -> dict:
+    """本地归档 → 完整响应 (ticks 已是归一化契约字段, direction 为字符串)。"""
+    ticks = [{
+        "time": r.get("time") or "",
+        "price": float(r.get("price") or 0),
+        "volume": float(r.get("volume") or 0),
+        "num": int(r.get("num") or 0),
+        "direction": r.get("direction") or "other",
+    } for r in rows]
+    return build_response_from_ticks(repo, symbol, day, ticks, stock_name,
+                                     source="local_archive", requested_date=day)
 
 
 def _build_tdx(repo, symbol: str, requested_date: str | None,
                stock_name: str | None) -> dict:
-    """数据源 A: TDX 分笔协议 (最近交易日, 分钟级, 含方向)。"""
+    """数据源 A: TDX 分笔协议 (easy-tdx serve 实例池, 分钟级, 含方向)。
+
+    requested_date=None → 当日端点; 给定日期 → 历史端点 (≥30 天), 空时回退当日端点
+    (requested_date 恰为最近交易日的场景)。
+    """
     raw = fetch_raw_ticks(symbol, requested_date)
     if not raw and requested_date:
-        # 公共服务器 history 分笔不可用; date 为最近交易日时, 当日分笔即该日数据
+        # 历史端点无数据时回退当日端点 (date 为最近交易日时, 当日分笔即该日数据)
         raw = fetch_raw_ticks(symbol, None)
     if not raw:
         if requested_date:
             raise TickUnavailable(
-                f"数据源不提供 {requested_date} 的分笔记录 (通达信公共行情仅保留最近交易日分笔)",
+                f"数据源不提供 {requested_date} 的分笔记录 "
+                "(通达信公共行情历史分笔仅保留约 30 天)",
                 code="tdx_no_history",
             )
         raise TickUnavailable("行情服务器未返回分笔数据 (可能非交易时段)")
@@ -310,7 +351,7 @@ def _build_tdx(repo, symbol: str, requested_date: str | None,
         "name": stock_name,
         "date": tick_date,
         "requested_date": requested_date,
-        "source": "tdx_gateway_ticks",
+        "source": "easy_tdx_ticks",
         "precision": "minute",
         "tick_count": len(ticks),
         "ticks": ticks,
@@ -320,39 +361,3 @@ def _build_tdx(repo, symbol: str, requested_date: str | None,
     }
 
 
-def _build_g4(repo, symbol: str, requested_date: str, stock_name: str | None) -> dict:
-    """数据源 B: g4tic 历史分笔 (秒级推断时间, 无方向; 与官方 1 分钟K同源)。"""
-    raw, meta = fetch_g4_ticks(symbol, requested_date)
-    ticks = []
-    for t in raw:
-        try:
-            price = float(t.get("price"))
-            vol = float(t.get("volume") or 0)
-        except (TypeError, ValueError):
-            continue
-        ticks.append({
-            "time": str(t.get("time") or "") or "盘后",
-            "price": price,
-            "volume": vol,
-            "num": 0,
-            "direction": "other",  # g4tic 打包无买卖方向字段
-        })
-    minute_volumes = _aggregate_minutes(ticks)
-    consistency = _consistency_check(repo, symbol, requested_date, ticks)
-    consistency["note"] = (
-        "g4tic 与官方 1 分钟K同源聚合, 量价与日K应完全一致; "
-        "时间为 Δt 计数校准推断 (秒级粒度), 非交易所原始毫秒戳"
-    )
-    return {
-        "symbol": symbol,
-        "name": stock_name,
-        "date": requested_date,
-        "requested_date": requested_date,
-        "source": "tdx_g4tic_pack",
-        "precision": "second_inferred",
-        "tick_count": len(ticks),
-        "ticks": ticks,
-        "minute_volumes": minute_volumes,
-        "segments": {"auction": False, "after_hours": False},
-        "consistency": consistency,
-    }

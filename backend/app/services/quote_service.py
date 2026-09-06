@@ -591,14 +591,10 @@ class QuoteService:
     def _custom_full_market_realtime(self, provider_name: str) -> list[dict]:
         """自定义源全市场实时拉取 — 适配两种 get_realtime 契约。
 
-        - tdx_gateway 插件: get_realtime(symbols=[...]) 显式 symbols 契约,
-          内部 50 只/批 × 6 并发 (全市场 ~25-30s); 裸调必抛
-          "requires an explicit watchlist or monitor symbol"。
+        - easy_tdx 等内置插件: get_realtime(symbols=[...]) 显式 symbols 契约。
         - YAML GenericHTTPProvider: get_realtime() 无参单请求全市场契约。
 
-        上游 v0.2.2 调用点只有无参分支, 与 tdx 契约不兼容 → 自合并 +
-        realtime_data_provider=tdx_gateway 起全市场实时拉取全程失败
-        (2026-08-31 实测盘中 3064 次失败, 看板数据全靠盘后日K管道)。
+        (历史: tdx_gateway 契约不兼容曾致全市场实时拉取全程失败, 源已移除 2026-09-05)
         此处按实时拉取偏好 (设置→监控) 本地展开 symbols, 优先走显式契约;
         TypeError (实现无 symbols 形参, YAML 源) 回退无参契约。
         """
@@ -1629,6 +1625,18 @@ class QuoteService:
                 hist_cols = [c for c in ohlcv_cols if c in hist_df.columns]
                 hist_df = hist_df.select(hist_cols).filter(pl.col("date") != today)
                 daily_ohlcv = daily_df.select([c for c in ohlcv_cols if c in daily_df.columns])
+                # 盘前 flush 守卫 (2026-09-04): 北京 00:00 预写分区时 quote_ts=00:00
+                # 会被完整性检查判"盘中快照"→ 修复任务删股票分区但指数 merge-upsert
+                # 不删 → 死循环锁死实时开关。盘前写入实为昨日收盘定版态 → quote_ts 置 null。
+                if "quote_ts" in daily_ohlcv.columns and not daily_ohlcv.is_empty():
+                    from datetime import time as _dtime
+
+                    from app.market_time import cn_now
+
+                    if cn_now().time() < _dtime(9, 15):
+                        daily_ohlcv = daily_ohlcv.with_columns(
+                            pl.lit(None, dtype=pl.Int64).alias("quote_ts")
+                        )
                 full_df = pl.concat([hist_df, daily_ohlcv], how="diagonal_relaxed")
                 full_df = full_df.sort(["symbol", "date"])
 

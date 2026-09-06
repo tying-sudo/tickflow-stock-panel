@@ -235,10 +235,34 @@ def move_to_top(symbol: str) -> list[dict]:
         return out.to_dicts()
 
 
-def clear() -> int:
-    """清空自选列表。返回移除的数量。"""
+def clear(scope: str = "all") -> int:
+    """清空自选列表。返回移除的数量。
+
+    scope (2026-09-05, 股票/基金隔离):
+      - "stocks": 只清非基金成分 (不在任何 kind=fund 分组里的标的) — 个股自选页
+      - "funds":  只清基金成分 (任一 kind=fund 分组的成员) — 基金自选页
+      - "all":    全清 (兼容旧调用)
+    两页共用一张 entries 表, 无 scope 的全清曾把基金自选一起清掉 (09-05 事故)。
+    """
     with _LOCK:
         df = _read_entries()
+        if df.is_empty():
+            return 0
+        if scope in ("stocks", "funds"):
+            fund_gids = {g["id"] for g in _read_groups() if g.get("kind") == "fund"}
+            rows = df.to_dicts()
+
+            def _is_fund_member(row: dict) -> bool:
+                return any(g in fund_gids for g in (row.get("group_ids") or []))
+
+            if scope == "stocks":
+                keep = [r for r in rows if _is_fund_member(r)]
+            else:
+                keep = [r for r in rows if not _is_fund_member(r)]
+            removed = len(rows) - len(keep)
+            if removed > 0:
+                _write_entries(pl.DataFrame(keep) if keep else _empty_entries())
+            return removed
         count = df.height
         if count > 0:
             _write_entries(_empty_entries())

@@ -91,8 +91,9 @@ class IntradaySignalEvaluator:
                 if volume is not None and volume > 0 and amount is not None and amount >= 0:
                     cumulative_volume += volume
                     cumulative_amount += amount
+                # 分钟K volume 契约=股 (2026-09-04 easy_tdx 切换, 历史库已迁移), amount=元 → 均价=元/股
                 average = (
-                    cumulative_amount / (cumulative_volume * 100.0)
+                    cumulative_amount / cumulative_volume
                     if cumulative_volume > 0 and cumulative_amount > 0
                     else None
                 )

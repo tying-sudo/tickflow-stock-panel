@@ -372,10 +372,11 @@ def remove_one(symbol: str, request: Request):
 
 
 @router.delete("")
-def clear_all():
-    """清空自选列表。"""
-    count = watchlist.clear()
-    return {"removed": count}
+def clear_all(scope: str = Query("all", pattern="^(stocks|funds|all)$",
+                                 description="stocks=仅个股自选页标的, funds=仅基金成分, all=全清")):
+    """清空自选列表 (scope 隔离: 个股页清空不动基金自选, 反之亦然)。"""
+    count = watchlist.clear(scope)
+    return {"removed": count, "scope": scope}
 
 
 # 自选页需要的列
