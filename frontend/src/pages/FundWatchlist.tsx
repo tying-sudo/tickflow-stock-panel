@@ -1012,7 +1012,7 @@ export function FundWatchlist() {
   })
 
   const clearAll = useMutation({
-    mutationFn: () => api.watchlistClear(),
+    mutationFn: () => api.watchlistClear('funds'), // 基金页清空: 不动个股自选 (scope 隔离)
     onSuccess: () => {
       setConfirmClear(false)
       // 立即清空 enriched 缓存

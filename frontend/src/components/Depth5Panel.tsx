@@ -43,7 +43,7 @@ function padN(levels: Depth5Level[], count: number): LevelRow[] {
  *
  * 单一数据源契约: 卖侧与买侧由 **同一个** GET /api/intraday/depth5 响应原子渲染
  * (一次 TDX 快照同时产出两侧), 任意一次刷新都整体替换两侧, 不存在两侧错位。
- * 数据源: tdx_gateway (VM 通达信, 无套餐限制) → tickflow (Pro+) 兜底。
+ * 数据源: easy_tdx (实例池 quotes 白名单子池) → tickflow (Pro+) 兜底。
  * 档位价格/数量变动时该行高亮闪烁 (~0.7s); 封板时标题下显示封单徽标条。
  */
 export function Depth5Panel({ symbol, refetchIntervalMs, height = 420, className }: Props) {
@@ -94,7 +94,7 @@ export function Depth5Panel({ symbol, refetchIntervalMs, height = 420, className
 
   const noCap = !!depth.error
   const ts = snapshot?.ts ? new Date(snapshot.ts).toLocaleTimeString('zh-CN', { hour12: false }) : null
-  const sourceLabel = snapshot?.source === 'tdx_gateway' ? 'TDX' : snapshot?.source === 'tickflow' ? 'TickFlow' : null
+  const sourceLabel = snapshot?.source === 'tickflow' ? 'TickFlow' : null
 
   // 五档聚合统计 (对齐通达信盘口 买均/总买/卖均/总卖): 量为手, 均价为五档量加权。
   const totalBid = bids.reduce((s, r) => s + r.volume, 0)

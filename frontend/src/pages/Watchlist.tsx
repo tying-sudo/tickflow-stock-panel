@@ -927,7 +927,7 @@ export function Watchlist() {
   })
 
   const clearAll = useMutation({
-    mutationFn: () => api.watchlistClear(),
+    mutationFn: () => api.watchlistClear('stocks'), // 个股页清空: 不动基金自选 (scope 隔离)
     onSuccess: () => {
       setConfirmClear(false)
       // 立即清空 enriched 缓存
@@ -1555,16 +1555,26 @@ export function Watchlist() {
               hint="使用右上角搜索添加，或通过股票旁的分组按钮移入当前分组。"
             />
           ) : groupCardsOpen ? (
-            <WatchlistGroupCards
-              groups={groups}
-              rows={rows}
-              groupBySymbol={groupBySymbol}
-              pcts={groupPcts}
-              onPreview={handleCardPreview}
-              onOpenGroup={handleGroupSelect}
-              config={groupStatsConfig}
-              onConfigChange={updateGroupStatsConfig}
-            />
+            groups.length === 0 ? (
+              /* 零股票分组 (kind≠fund) 时分组卡片组件整块 return null → 整页空白;
+                 给出创建分组引导 (基金页有分组故正常, 股票页分组为空时同样需要反馈) */
+              <EmptyState
+                icon={FolderOpen}
+                title="还没有自选分组"
+                hint="分组卡片视图按分组展示自选股。先通过「管理自选分组」创建分组，再把个股移入分组即可查看。"
+              />
+            ) : (
+              <WatchlistGroupCards
+                groups={groups}
+                rows={rows}
+                groupBySymbol={groupBySymbol}
+                pcts={groupPcts}
+                onPreview={handleCardPreview}
+                onOpenGroup={handleGroupSelect}
+                config={groupStatsConfig}
+                onConfigChange={updateGroupStatsConfig}
+              />
+            )
           ) : viewMode === 'table' ? (
             <StockDataTable
               columns={visibleColumns}

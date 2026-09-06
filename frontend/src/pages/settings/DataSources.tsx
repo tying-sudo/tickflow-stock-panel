@@ -620,11 +620,11 @@ export function SettingsDataSourcesPanel({ highlight }: { highlight?: string } =
   }
   const servingDatasets = (name: string) => {
     const ids = Object.entries(effProvider).filter(([, v]) => v === name).map(([k]) => k)
-    if (name === 'tickflow') {
-      // 不可路由能力 (field=null, 如全量分钟): 仅 TickFlow 提供, usable 即服务中
-      ids.push(...(matrix.data?.capabilities ?? [])
-        .filter(c => c.field == null && c.usable).map(c => c.id))
-    }
+    // 不可路由能力 (field=null, 如全量分钟/分时成交): 无偏好字段, 生效源恒为
+    // 注册表 default → 按 matrix.current 与源名匹配且 usable 即服务中.
+    // (旧逻辑只把这类能力硬加给 tickflow — easy_tdx 承接后徽标恒为"已适配", 2026-09-05 修正)
+    ids.push(...(matrix.data?.capabilities ?? [])
+      .filter(c => c.field == null && c.usable && c.current === name).map(c => c.id))
     return ids
   }
   const servingSetOf = (name: string) => new Set(servingDatasets(name))

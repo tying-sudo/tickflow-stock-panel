@@ -2309,8 +2309,8 @@ export const api = {
       `/api/watchlist/${encodeURIComponent(symbol)}/top`,
       { method: 'POST' },
     ),
-  watchlistClear: () =>
-    request<{ removed: number }>('/api/watchlist', { method: 'DELETE' }),
+  watchlistClear: (scope: 'stocks' | 'funds' | 'all' = 'all') =>
+    request<{ removed: number; scope: string }>(`/api/watchlist?scope=${scope}`, { method: 'DELETE' }),
   watchlistQuotes: () => request<{ quotes: Quote[] }>('/api/watchlist/quotes'),
   watchlistEnriched: (extColumns?: string, symbols?: string) =>
     request<{ rows: any[]; as_of: string | null; elapsed_ms: number }>(
@@ -2607,6 +2607,12 @@ export const api = {
     request<Depth5Snapshot>(`/api/intraday/depth5?symbol=${encodeURIComponent(symbol)}`, { quiet: true }),
   transactions: (symbol: string) =>
     request<TransactionsSnapshot>(`/api/kline/transactions?symbol=${encodeURIComponent(symbol)}`, { quiet: true }),
+  transactionsTail: (symbol: string, date: string | null | undefined, after: number) =>
+    request<TransactionsTail>(
+      `/api/kline/transactions?symbol=${encodeURIComponent(symbol)}&tail=${after}` +
+        (date ? `&date_hint=${encodeURIComponent(date)}` : ''),
+      { quiet: true },
+    ),
   instrumentsNames: (symbols: string[]) =>
     request<{ names: Record<string, string> }>('/api/kline/instruments/names', {
       method: 'POST',
@@ -3369,7 +3375,7 @@ export interface Depth5Snapshot {
   asks: Depth5Level[]
   bids: Depth5Level[]
   ts: number | null
-  /** 数据源: tdx_gateway | tickflow */
+  /** 数据源: easy_tdx | tickflow */
   source?: string
 }
 
@@ -3380,7 +3386,7 @@ export interface TickTrade {
   price: number
   /** 成交量 (手) */
   volume: number
-  /** 笔数 (0 = 数据源无此字段, 如 g4tic 历史包) */
+  /** 笔数 (0 = 数据源无此字段) */
   num: number
   /** buy 买盘 | sell 卖盘 | neutral 中性盘 | auction 竞价 | after_hours 盘后 | other 无方向 */
   direction: string
@@ -3391,10 +3397,22 @@ export interface TransactionsSnapshot {
   name: string | null
   /** 分笔所属交易日 (ISO) */
   date: string | null
-  /** tdx_gateway_ticks | tdx_g4tic_pack */
+  /** easy_tdx_live | easy_tdx_ticks | local_archive */
   source: string
   tick_count: number
   ticks: TickTrade[]
+}
+
+/** 分笔尾部增量 (0.5s 轮询消抖): 无新成交时 appended 为空, 客户端不动状态 */
+export interface TransactionsTail {
+  symbol: string
+  date: string | null
+  source: string
+  tick_count: number
+  /** true = 服务端数据与客户端不符 (跨日/重建), 携带全量 ticks 重置 */
+  full: boolean
+  /** 第 after 笔之后的新增 */
+  appended: TickTrade[]
 }
 
 export interface FundStats {

@@ -13,7 +13,8 @@ export function computeIntradayAverage(data: MinuteKlineRow[]): number[] {
   let volume = 0
   for (const row of data) {
     amount += row.amount
-    volume += row.volume * 100
+    // 分钟K volume 新契约 (2026-09-04 easy_tdx 切换) 已是股, 不再 ×100
+    volume += row.volume
     result.push(volume > 0 ? amount / volume : row.close)
   }
   return result

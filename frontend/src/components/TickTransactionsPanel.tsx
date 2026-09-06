@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef } from 'react'
+import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { api, type TickTrade } from '@/lib/api'
 
@@ -26,8 +26,9 @@ function fmtVol(v: number): string {
 }
 
 /**
- * 单笔行 (memo 化): 0.5s 全量轮询下, 值不变的行直接跳过重渲染,
- * 活跃股万笔级列表每秒两次刷新也只 diff 新增/变动行。
+ * 单笔行 (memo 化): 值不变的行直接跳过重渲染。
+ * 行 key 用内容指纹 (时间+价+量+方向+序号) — 追加式更新下旧行 key 恒定,
+ * 不会因整列表重挂导致滚动跳动。
  */
 const TickRow = memo(
   function TickRow({ time, price, volume, num, direction }: TickTrade) {
@@ -57,35 +58,82 @@ const TickRow = memo(
 /**
  * 分时成交 (分笔明细) — 通达信口径: 时间 / 价格 / 成交量(手) / 笔数 / 方向。
  *
- * 数据: GET /api/kline/transactions (TDX 分笔协议经网关, 最近交易日, 分钟级, 含买卖方向;
- * 历史日期走 g4tic 包, 无方向字段显示"—")。实盘节奏 0.5s 全量轮询当日 (调用方传入);
- * 列表时间升序、自动钉在最新一笔 (用户上滚查看历史时不打断, 滚回底部恢复跟随)。
- * 底栏: 数据更新时间 + 当日总笔数。
+ * 流式增量刷新 (2026-09-05 消抖改造):
+ * - 首拉全量 (含 minute_volumes/一致性核对), 之后 0.5s 轮询走 /transactions?tail=N
+ *   尾部增量 — 无新成交时响应近空且**不动 React 状态** → 列表不重渲染、
+ *   滚动位置不重置 (旧实现每 500ms 整包替换 data + 强制 scrollTop 吸底 = 抖动)。
+ * - 只有真的追加了新笔才 setState; 服务端 full=true (跨日/重建) 时整表重置。
+ * - 列表时间升序、自动钉在最新一笔 (用户上滚查看历史时不打断, 滚回底部恢复跟随)。
  */
 export function TickTransactionsPanel({ symbol, height = 420, refetchIntervalMs, className }: Props) {
+  // 首拉 (symbol 变化时重置)
   const tx = useQuery({
     queryKey: ['transactions', symbol],
     queryFn: () => api.transactions(symbol),
     enabled: !!symbol,
     retry: false,
-    refetchInterval: refetchIntervalMs,
-    refetchIntervalInBackground: true,
-    staleTime: 5000,
+    staleTime: Infinity, // 后续刷新全靠 tail 轮询, 不再整包 refetch
   })
 
-  const ticks: TickTrade[] = tx.data?.ticks ?? []
+  const [ticks, setTicks] = useState<TickTrade[]>([])
+  const [day, setDay] = useState<string | null>(null)
+  const [source, setSource] = useState<string | null>(null)
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null)
 
-  // 自动滚动跟随最新: 仅当用户停在底部附近时才吸附到底
+  // 首拉/换 symbol → 整表替换
+  useEffect(() => {
+    const data = tx.data
+    if (!data) return
+    setTicks(data.ticks ?? [])
+    setDay(data.date ?? null)
+    setSource(data.source ?? null)
+    setUpdatedAt(Date.now())
+  }, [tx.data, symbol])
+
+  // 尾部增量轮询: refs 拿最新值, interval 只建一次 (symbol/开关变化时重建)
+  const ticksRef = useRef(ticks)
+  ticksRef.current = ticks
+  const dayRef = useRef(day)
+  dayRef.current = day
+
+  const applyTail = useCallback((r: Awaited<ReturnType<typeof api.transactionsTail>>) => {
+    if (r.full) {
+      setTicks(r.appended)
+      setDay(r.date)
+      setSource(r.source)
+    } else if (r.appended.length > 0) {
+      setTicks(prev => (prev.length === r.tick_count - r.appended.length ? [...prev, ...r.appended] : prev))
+      setDay(r.date)
+      setSource(r.source)
+    }
+    setUpdatedAt(Date.now())
+  }, [])
+
+  useEffect(() => {
+    if (!refetchIntervalMs || !symbol || !tx.isSuccess) return
+    let stopped = false
+    const id = window.setInterval(async () => {
+      if (stopped) return
+      try {
+        const r = await api.transactionsTail(symbol, dayRef.current, ticksRef.current.length)
+        if (!stopped) applyTail(r)
+      } catch {
+        /* 静默: 下一轮重试 */
+      }
+    }, refetchIntervalMs)
+    return () => { stopped = true; window.clearInterval(id) }
+  }, [refetchIntervalMs, symbol, tx.isSuccess, applyTail])
+
+  // 自动滚动跟随最新: 仅当用户停在底部附近时才吸附 (且只在追加后触发)
   const scrollRef = useRef<HTMLDivElement>(null)
   const pinnedRef = useRef(true)
+  const prevLenRef = useRef(0)
   useEffect(() => {
+    if (ticks.length === prevLenRef.current) return // 无新增不动 DOM
+    prevLenRef.current = ticks.length
     const el = scrollRef.current
     if (el && pinnedRef.current) el.scrollTop = el.scrollHeight
-  }, [tx.data])
-
-  const updatedAt = tx.dataUpdatedAt
-    ? new Date(tx.dataUpdatedAt).toLocaleTimeString('zh-CN', { hour12: false })
-    : null
+  }, [ticks])
 
   return (
     <div
@@ -96,7 +144,7 @@ export function TickTransactionsPanel({ symbol, height = 420, refetchIntervalMs,
       {/* 标题行: 名称 + 数据日期/来源 */}
       <div className="flex shrink-0 items-center justify-between border-b border-border/60 px-2 py-1">
         <span className="flex items-center gap-1.5 text-[11px] font-semibold text-foreground">
-          {refetchIntervalMs != null && tx.data && (
+          {refetchIntervalMs != null && ticks.length > 0 && (
             <span className="relative flex h-1.5 w-1.5">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-bull opacity-60" />
               <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-bull" />
@@ -105,11 +153,11 @@ export function TickTransactionsPanel({ symbol, height = 420, refetchIntervalMs,
           分时成交
         </span>
         <span className="flex items-center gap-1.5">
-          {tx.data?.source === 'tdx_gateway_ticks' && (
-            <span className="rounded bg-elevated px-1 py-0.5 text-[9px] text-muted">TDX</span>
+          {source === 'local_archive' && (
+            <span className="rounded bg-elevated px-1 py-0.5 text-[9px] text-muted">归档</span>
           )}
-          {tx.data?.date && (
-            <span className="font-mono text-[9px] text-muted">{tx.data.date}</span>
+          {day && (
+            <span className="font-mono text-[9px] text-muted">{day}</span>
           )}
         </span>
       </div>
@@ -147,13 +195,13 @@ export function TickTransactionsPanel({ symbol, height = 420, refetchIntervalMs,
               <div className="px-2 py-4 text-center text-[10px] text-muted">当日暂无分笔记录</div>
             )}
             {ticks.map((t, i) => (
-              <TickRow key={`${t.time}-${i}`} {...t} />
+              <TickRow key={`${t.time}|${t.price}|${t.volume}|${t.direction}|${i}`} {...t} />
             ))}
           </div>
           {/* 底栏: 更新时间 + 总笔数 */}
           <div className="flex shrink-0 items-center justify-between border-t border-border/60 px-2 py-1">
-            <span className="text-[10px] text-muted">更新 {updatedAt ?? '—'}</span>
-            <span className="font-mono text-[10px] text-muted">{tx.data?.tick_count ?? 0}笔</span>
+            <span className="text-[10px] text-muted">更新 {updatedAt ? new Date(updatedAt).toLocaleTimeString('zh-CN', { hour12: false }) : '—'}</span>
+            <span className="font-mono text-[10px] text-muted">{ticks.length}笔</span>
           </div>
         </>
       )}
