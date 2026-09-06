@@ -1,0 +1,8 @@
+name: easy_tdx
+display_name: "easy-tdx 通达信协议直连"
+runtime: none
+entry: app.plugins.easy_tdx.provider:EasyTdxProvider
+check: app.plugins.easy_tdx.provider:availability
+datasets: [daily, adj_factor, minute, realtime, depth5, financial, tick, full_minute]
+description: "本机 easy-tdx serve 多实例池 (systemd 自启, 端口随扩容调整) 直连公网通达信行情服务器: MAC 协议 K线/分钟K (47+ 台候选自动测速选优) + 标准协议五档批量报价 (仅 4 台白名单机支持, 自动热切换自愈)。单位契约: 分钟K volume=股 (新契约, 历史库已迁移), 日K/实时/盘口 volume=手, amount=元, 财务股本=股 (透传)。分时成交 (tick_transactions/tick_archive) 与本地 T+0 全量分钟管道 (t0_minute_backfill + minute_intraday_sync) 已由本源接管 (2026-09-04, tdx_gateway 降级冷备)。财务为最新单期快照子集 (历史多期二期接新浪三表)。"
+install_hint: "Requires the easy-tdx serve pool on this host: systemctl enable --now easy-tdx-main.service easy-tdx-worker@80{01..30}.service (easy-tdx[web]==1.32.3 in backend venv, uv pip install — venv 无 pip 模块). 升级纪律: 先 diff 新旧版 web/routers+schemas 契约面再动版本; 重启 serve 会丢 /server/switch 主机布局, 先快照 is_current 再恢复。"
