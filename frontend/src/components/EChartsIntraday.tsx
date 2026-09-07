@@ -28,6 +28,8 @@ interface Props {
   priceLines?: { value: number; label?: string; color?: string }[]
   showLimitLines?: boolean
   showAvgLine?: boolean
+  /** 竞价段 (09:25-09:30) 淡色背景标注。指数分时启用。 */
+  showPhaseBands?: boolean
 }
 
 function fmtAmt(v: number): string {
@@ -62,7 +64,7 @@ function getLimitPrices(prevClose: number, priceLimit?: PriceLimitInfo): {
   return { limitUp, limitDown, upPct, downPct }
 }
 
-function buildOption(data: MinuteKlineRow[], prevClose: number | undefined, avgPrices: number[], lineColor: string, areaColor: string, yMode: YMode, ct: ChartTheme, priceLimit?: PriceLimitInfo, showLimitLines = true, showAvgLine = true, priceLines: Props['priceLines'] = []): EChartsOption {
+function buildOption(data: MinuteKlineRow[], prevClose: number | undefined, avgPrices: number[], lineColor: string, areaColor: string, yMode: YMode, ct: ChartTheme, priceLimit?: PriceLimitInfo, showLimitLines = true, showAvgLine = true, priceLines: Props['priceLines'] = [], showPhaseBands = false): EChartsOption {
   // 将数据映射到全天时间轴上的正确位置
   const timeIndexMap = new Map(FULL_DAY_TIMES.map((t, i) => [t, i]))
   const closes = new Array(FULL_DAY_TIMES.length).fill(null) as (number | null)[]
@@ -201,14 +203,17 @@ function buildOption(data: MinuteKlineRow[], prevClose: number | undefined, avgP
     }
   }
 
-  // x 轴标签: 9:30, 10:30, 11:30/13:00, 14:00, 15:00
-  // 11:30(idx 120) 和 13:00(idx 121) 相邻会重叠, 合并为一个标签
+  // x 轴标签: 9:25, 9:30, 10:30, 11:30/13:00, 14:00, 15:00
+  // 索引按 FULL_DAY_TIMES 动态查找 (网格头部含 09:25-09:29 竞价槽, 不能硬编码)
+  // 11:30 和 13:00 相邻会重叠, 合并为一个标签
+  const labelIdx = (t: string) => FULL_DAY_TIMES.indexOf(t)
   const xAxisLabelMap: Record<number, string> = {
-    0: '9:30',
-    60: '10:30',
-    120: '11:30/13:00',
-    181: '14:00',
-    241: '15:00',
+    [labelIdx('09:25')]: '9:25',
+    [labelIdx('09:30')]: '9:30',
+    [labelIdx('10:30')]: '10:30',
+    [labelIdx('11:30')]: '11:30/13:00',
+    [labelIdx('14:00')]: '14:00',
+    [labelIdx('15:00')]: '15:00',
   }
   const xAxisLabelFormatter = (_value: string, idx: number) => {
     return xAxisLabelMap[idx] ?? ''
@@ -367,12 +372,22 @@ function buildOption(data: MinuteKlineRow[], prevClose: number | undefined, avgP
         type: 'line',
         data: closes,
         smooth: false,
-        symbol: 'none',
+        symbol: 'circle',
+        symbolSize: 4,
+        // 数据极少 (盘前仅 9:25 竞价 bar) 时线画不出来, 显示点位兜底
+        showSymbol: data.length > 0 && data.length <= 5,
         cursor: 'crosshair',
         lineStyle: { width: 1.2, color: lineColor },
         areaStyle,
         connectNulls: true,
         markLine: markLineData.length > 0 ? { symbol: 'none', data: markLineData, animation: false, silent: true } : undefined,
+        // 竞价段 (09:25-09:30) 淡色背景, 区分盘前撮合与连续竞价。
+        // 段宽仅 5 槽 (~12px), 不放文字标签 (x 轴 9:25 刻度已标识)。
+        markArea: showPhaseBands ? {
+          silent: true,
+          itemStyle: { color: 'rgba(127,127,127,0.08)' },
+          data: [[{ xAxis: '09:25' }, { xAxis: '09:30' }]],
+        } : undefined,
       },
       ...(showAvgLine ? [{
         name: '均价',
@@ -408,6 +423,7 @@ export function EChartsIntraday({
   priceLines,
   showLimitLines = true,
   showAvgLine = true,
+  showPhaseBands = false,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<ECharts | null>(null)
@@ -515,11 +531,11 @@ export function EChartsIntraday({
       }
       fullDayToDataIdx.current = mapping
 
-      chart.setOption(buildOption(data, prevClose, avgPrices, lineColor, areaFill, yMode, ct, priceLimit, showLimitLines, showAvgLine, priceLines), true)
+      chart.setOption(buildOption(data, prevClose, avgPrices, lineColor, areaFill, yMode, ct, priceLimit, showLimitLines, showAvgLine, priceLines, showPhaseBands), true)
     } else {
       chart.clear()
     }
-  }, [data, prevClose, height, lineColor, areaFill, yMode, ct, priceLimit, showLimitLines, showAvgLine, priceLines])
+  }, [data, prevClose, height, lineColor, areaFill, yMode, ct, priceLimit, showLimitLines, showAvgLine, priceLines, showPhaseBands])
 
   useEffect(() => {
     return () => {

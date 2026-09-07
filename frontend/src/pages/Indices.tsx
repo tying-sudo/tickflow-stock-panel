@@ -4,9 +4,25 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Activity, Loader2, Lock, RefreshCw, Search } from 'lucide-react'
 import { api, type IndexInstrument, type KlineRow, type MinuteKlineRow } from '@/lib/api'
 import { QK } from '@/lib/queryKeys'
-import { useCapabilities } from '@/lib/useSharedQueries'
+import { useCapabilities, usePreferences, useQuoteStatus } from '@/lib/useSharedQueries'
 import { EChartsCandlestick, type OHLC } from '@/components/EChartsCandlestick'
 import { EChartsIntraday } from '@/components/EChartsIntraday'
+
+/** 北京时区今日 (YYYY-MM-DD)。sv-SE locale 输出 ISO 日期格式。 */
+function cnToday(): string {
+  return new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' })
+}
+
+/** 分时 x 轴已扩 09:25 竞价槽, 头部徽章按市场阶段提示当前所处分段。 */
+const PHASE_LABELS: Record<string, string> = {
+  preopen: '盘前竞价',
+  morning: '上午盘',
+  morning_final: '午间休市',
+  pre_afternoon: '午后开盘前',
+  afternoon: '下午盘',
+  close_final: '收盘定版',
+  closed: '休市',
+}
 
 function defaultRange() {
   const now = new Date()
@@ -73,11 +89,24 @@ export function Indices() {
   const [selected, setSelected] = useState<string>(symbolParam)
   const [range, setRange] = useState(defaultRange)
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
+  // 用户是否在日K图上主动点选过日期 — 区分"跟随默认(交易日=今日)"与"锁定用户选择"
+  const [userPickedDate, setUserPickedDate] = useState(false)
   const [linkedPrice, setLinkedPrice] = useState<number | null>(null)
 
   // 分时数据依赖分钟K批量数据 (kline.minute.batch)
   const caps = useCapabilities()
   const hasMinuteCap = !!caps.data?.capabilities?.['kline.minute.batch']
+
+  // 行情阶段信号: Layout 全局 60s 轮询 + SSE 刷新, 此处共享缓存。
+  // is_polling_window 含节假日探针: 交易日 9:15 起 true, 定版完成后 false;
+  // final_sync_done = 当日午休/收盘定版完成。两者组合判定"今日是交易日":
+  // 覆盖 盘前→盘中→收盘定版后 的全链路, 周末/节假日 (均为 false) 取最近交易日。
+  const quoteStatus = useQuoteStatus()
+  const status = quoteStatus.data
+  const todayIsTradingDay = !!(status?.is_polling_window || status?.final_sync_done)
+
+  const prefs = usePreferences()
+  const intradayRefetchMs = (prefs.data?.minute_intraday_refresh_interval ?? 6) * 1000
 
   const list = useQuery({
     queryKey: QK.indexList,
@@ -125,11 +154,17 @@ export function Indices() {
     placeholderData: (prev) => prev,
   })
 
+  // 当日实时分时: 后端 /api/index/minute 每次实时拉取 (无本地缓存),
+  // 交易日选中当日时按偏好间隔轮询 (9:25 竞价点 → 盘中连续 → 定版完成后自动停)。
+  const today = cnToday()
+  const minutePollActive = selectedDate === today && !!status?.is_polling_window
+
   const minute = useQuery({
     queryKey: QK.indexMinute(selectedSymbol, selectedDate ?? ''),
     queryFn: () => api.indexMinute(selectedSymbol, selectedDate ?? undefined),
     enabled: !!selectedSymbol && !!selectedDate && hasMinuteCap,
     placeholderData: (prev) => prev,
+    refetchInterval: minutePollActive ? intradayRefetchMs : false,
   })
 
   const syncInstruments = useMutation({
@@ -162,22 +197,37 @@ export function Indices() {
   const selectedInfo = [...topRows, ...listRows].find(r => r.symbol === selectedSymbol) || daily.data?.index_info
   const minuteRows: MinuteKlineRow[] = minute.data?.rows ?? []
   const selectedIdx = selectedDate ? chartRows.findIndex(r => r.date === selectedDate) : -1
+  // 昨收: 历史日期取日K前一根; 当日优先取实时行情 prev_close
+  // (当日日K要等收盘定版才落盘, selectedIdx=-1 会错位取到最后一根=上一交易日,
+  //  那根正是当日实时行情的"昨收"来源, 但实时行情字段更直接且不受日K延迟影响)
   const prevClose = selectedIdx > 0
     ? chartRows[selectedIdx - 1].close
-    : chartRows.length >= 2
-      ? chartRows[chartRows.length - 2].close
-      : undefined
+    : selectedDate === today
+      ? (selectedQuote?.prev_close ?? (chartRows.length >= 1 ? chartRows[chartRows.length - 1].close : undefined))
+      : chartRows.length >= 2
+        ? chartRows[chartRows.length - 2].close
+        : undefined
 
   useEffect(() => {
     setSelectedDate(null)
+    setUserPickedDate(false)
     setLinkedPrice(null)
   }, [selectedSymbol])
 
+  // 默认日期: 交易日指向北京今日 (当日实时分时); 否则回退日K最后一根 (最近交易日)。
+  // 不覆盖用户点选; 覆盖场景: 早于日K落盘的盘中时段 (日K最后一根还是上一交易日)、
+  // quoteStatus 晚于日K加载时把默认值从上一交易日纠正回今日。
   useEffect(() => {
-    if ((!selectedDate || !chartRows.some(r => r.date === selectedDate)) && chartRows.length > 0 && daily.data?.symbol === selectedSymbol) {
-      setSelectedDate(chartRows[chartRows.length - 1].date)
+    if (userPickedDate) return
+    if (todayIsTradingDay) {
+      if (selectedDate !== today) setSelectedDate(today)
+      return
     }
-  }, [chartRows, daily.data?.symbol, selectedDate, selectedSymbol])
+    if (chartRows.length > 0 && daily.data?.symbol === selectedSymbol) {
+      const last = chartRows[chartRows.length - 1].date
+      if (selectedDate !== last) setSelectedDate(last)
+    }
+  }, [chartRows, daily.data?.symbol, selectedDate, selectedSymbol, today, todayIsTradingDay, userPickedDate])
   const renderIndexItem = (item: IndexInstrument) => {
     const q = quoteBySymbol.get(item.symbol)
     const pct = q?.change_pct ?? q?.pct
@@ -306,7 +356,7 @@ export function Indices() {
                   showMarkers={false}
                   symbol={selectedSymbol}
                   linkedPrice={linkedPrice}
-                  onDateClick={setSelectedDate}
+                  onDateClick={(d) => { setSelectedDate(d); setUserPickedDate(true) }}
                   visibleBars={48}
                   activeIndicators={['vol', 'macd']}
                 />
@@ -320,20 +370,42 @@ export function Indices() {
                   </div>
                 ) : (
                   <>
+                    <div className="flex items-center justify-between gap-2 pb-1">
+                      <div className="flex items-center gap-2 text-xs">
+                        <span className="font-mono text-secondary">{selectedDate ?? '--'}</span>
+                        {minutePollActive && (
+                          <span className="inline-flex items-center gap-1 rounded bg-accent/15 px-1.5 py-0.5 text-[10px] text-accent">
+                            <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
+                            实时
+                          </span>
+                        )}
+                        {status?.market_phase && (
+                          <span className="rounded bg-elevated px-1.5 py-0.5 text-[10px] text-muted">
+                            {PHASE_LABELS[status.market_phase] ?? status.market_phase}
+                          </span>
+                        )}
+                      </div>
+                      {minute.dataUpdatedAt > 0 && (
+                        <span className="font-mono text-[10px] text-muted">
+                          {new Date(minute.dataUpdatedAt).toLocaleTimeString('sv-SE', { timeZone: 'Asia/Shanghai', hour12: false })}
+                        </span>
+                      )}
+                    </div>
                     {minute.isLoading && <div className="py-2 text-xs text-muted">分时加载中…</div>}
                     {!minute.isLoading && minuteRows.length === 0 && (
                       <div className="flex h-full items-center justify-center text-xs text-muted">
-                        暂无分时数据
+                        {selectedDate === today ? '等待开盘数据…' : '暂无分时数据'}
                       </div>
                     )}
                     {minuteRows.length > 0 && (
                       <EChartsIntraday
                         data={minuteRows}
-                        height={620}
+                        height={584}
                         prevClose={prevClose}
                         date={selectedDate ?? undefined}
                         showLimitLines={false}
                         showAvgLine={false}
+                        showPhaseBands={true}
                         onPriceHover={setLinkedPrice}
                       />
                     )}

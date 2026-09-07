@@ -22,6 +22,11 @@ export function computeIntradayAverage(data: MinuteKlineRow[]): number[] {
 
 function generateFullDayTimes(): string[] {
   const times: string[] = []
+  // 09:25-09:29 竞价槽: 数据源分钟K窗口从 9:25 起 (fetch_minute_single), 9:25 集合竞价
+  // 撮合 bar 需要槽位落位, 否则被网格丢弃; 9:26-9:29 通常是空槽 (connectNulls 跨过)。
+  for (let minute = 25; minute <= 29; minute++) {
+    times.push(`09:${String(minute).padStart(2, '0')}`)
+  }
   for (let hour = 9; hour <= 11; hour++) {
     const startMinute = hour === 9 ? 30 : 0
     const endMinute = hour === 11 ? 30 : 59
