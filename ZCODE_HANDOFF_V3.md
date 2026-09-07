@@ -2,7 +2,7 @@
 
 > 移交时间：2026-09-07 | 移交方：ZCode 会话（09-07 交易日：资讯二开 / 竞价看板 / 指数分时 / reload 持久化 / 快照断页 / FundTrack 逆向）
 > 前置文档：`ZCODE_HANDOFF_V2.md`（09-05/06 量化底座修复工程，本档不重复，仅引用）；`ZCODE_DEV_HANDOFF.md`（09-04 easy_tdx 切换工程）
-> Git：本地完整状态已推 `github.com/tying-sudo/tickflow-stock-panel` 分支 `deploy/v0.2.2-container`；**目标仓库 main = 上游合并分支，用户明令禁止覆盖**。
+> Git：本地分支 `deploy/v0.2.2-container` 领先远端 4 个提交（`2fb9c96` 之后），**推送因凭证失效暂未完成**（旧 PAT 已撤销、gh keyring token 同失效，待新 PAT 后 `git push github deploy/v0.2.2-container`）；**目标仓库 main = 上游合并分支，用户明令禁止覆盖**。
 
 ---
 
@@ -173,8 +173,7 @@
 
 ## 6. Git 状态
 
-- 推送前本地分支 `deploy/v0.2.2-container` = `2fb9c96`（V2 交接文档），与远端同步。
-- **本工程 3 个新提交**（本档随同一并推送）：
+- 本地分支 `deploy/v0.2.2-container` = 远端 `2fb9c96`（V2 交接文档）+ **本工程 4 个新提交**（本档撰写时推送因凭证失效未完成，见下方凭证条目）：
 
 | 提交 | 内容 | 文件 |
 |---|---|---|
@@ -183,8 +182,7 @@
 | `fix(frontend)` | 指数分时实时分段修复 | `EChartsIntraday.tsx`、`intraday-chart.ts`、`Indices.tsx` |
 
 - **main = 上游合并分支，禁止覆盖**；后续同步上游 = `git fetch github main` → rebase/merge 到部署分支。
-- 推送凭证：PAT 经 `http.extraheader` 单次传递，不落 config；本机 api.github.com 有网络层反代（API 探测结果不可信，git 传输正常）。
-- ⚠️ 用户 PAT 已在对话中暴露过，应已撤销；下次用新 token。
+- 推送凭证（⚠️ 09-07 实测更新）：旧 PAT（09-06 用过）已撤销；gh CLI keyring 里的 40 位 token 也被 GitHub 真实拒绝（`gh auth status` 报 invalid 属实，本次 DNS 无劫持、github.com → 20.27.177.113 真 IP）。本机无任何有效凭证——**需用户重新提供 PAT（repo write 权限）或本机跑 `gh auth login -h github.com` 交互登录**，然后 `git push github deploy/v0.2.2-container`（PAT 可走 `http.extraheader` 单次传递，不落 config）。
 
 ---
 
