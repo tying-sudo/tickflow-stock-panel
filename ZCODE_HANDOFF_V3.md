@@ -182,7 +182,8 @@
 | `fix(frontend)` | 指数分时实时分段修复 | `EChartsIntraday.tsx`、`intraday-chart.ts`、`Indices.tsx` |
 
 - **main = 上游合并分支，禁止覆盖**；后续同步上游 = `git fetch github main` → rebase/merge 到部署分支。
-- 推送凭证（09-07 晚收尾）：09-06 旧 PAT 已撤销、gh keyring token 同失效（均被 GitHub 真实拒绝，本次 DNS 无劫持）；后用**用户提供的新 PAT（经典版，repo 权限）经 `http.extraheader` 单次推送成功**，不落 git config。⚠️ 首次推送曾遇 `schannel: SSL/TLS handshake failed` 瞬时网络错误，重试即过——遇到先重试再排查。gh keyring 里仍是失效 token，如需 gh CLI 可跑 `gh auth login -h github.com` 刷新。
+- 推送凭证（09-07 晚收尾）：09-06 旧 PAT 已撤销、gh keyring token 同失效（均被 GitHub 真实拒绝，本次 DNS 无劫持）；后用**用户提供的新 PAT（经典版，repo 权限）经 `http.extraheader` 单次推送成功**，不落 git config。gh keyring 里仍是失效 token，如需 gh CLI 可跑 `gh auth login -h github.com` 刷新。
+- **⚠️ 本机 GitHub 网络路径（排障 40 分钟换来的）**：git 全局代理指向 `127.0.0.1:7897`（`git config --global http.proxy`），但 Clash 实际监听 **7877**——7897 恒不可达时 git 报 `schannel: failed to receive handshake`（误判为网络抖动，重试无益）。**推送/ls-remote 一律带 `-c http.proxy=http://127.0.0.1:7877` 单次覆盖**（勿改全局 config）；直连 github.com 的 TLS 也被阻断（curl http_code=000），必须走代理。新 PAT 存于桌面 `GitHub API 的令牌.txt`（经典版 ghp_，repo 权限）。
 
 ---
 
