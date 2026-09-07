@@ -1024,8 +1024,18 @@ class EasyTdxProvider:
             symbol = f"{code}.{'SH' if market == 1 else ('BJ' if market == 2 else 'SZ')}"
             last_price = _number(row.get("price"))
             prev_close = _number(row.get("pre_close"))
-            # price=0 (盘前/停牌) 过滤, 与 tdx_gateway Now=0 守卫同语义
-            if not last_price or prev_close in (None, 0):
+            # price=0 且无买一 (停牌/真无行情) → 丢弃, 与 tdx_gateway Now=0 守卫同语义。
+            # 集合竞价阶段 (09:15-09:25) price=0 但买一价已挂 → 保留该行,
+            # 用买一作虚拟撮合价, 否则看板竞价期间股票榜整体消失 (2026-09-07
+            # 竞价看板停在上个交易日的根因)。
+            session = "normal"
+            if not last_price:
+                bid1 = _number(row.get("bid1"))
+                if not bid1 or prev_close in (None, 0):
+                    continue
+                last_price = bid1
+                session = "auction"
+            elif prev_close in (None, 0):
                 continue
             change_amount = last_price - prev_close
             records.append({
@@ -1039,6 +1049,7 @@ class EasyTdxProvider:
                 "amount": _number(row.get("amount")),  # 元
                 "change_amount": change_amount,
                 "change_pct": change_amount / prev_close,
+                "session": session,
             })
         return records
 

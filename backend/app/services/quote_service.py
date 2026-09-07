@@ -251,15 +251,24 @@ class QuoteService:
         self._save_enabled(True)
         logger.info("行情服务已启动, 轮询间隔 %.1fs", self._interval)
 
-    def stop(self) -> None:
-        """停止后台行情轮询线程。"""
+    def stop(self, *, persist: bool = False) -> None:
+        """停止后台行情轮询线程。
+
+        persist=False (默认, 进程 shutdown/reload 路径): 只停线程,
+        不改 preferences —— 否则 uvicorn --reload 每次热重载都会把
+        用户实时开关持久化成关闭, 新进程 boot_check 不自启,
+        下午开盘无轮询、看板数据停在上半场 (2026-09-07 事故)。
+        persist=True: 同时把开关写成关闭 (用户显式关闭时用;
+        settings.py 已在调 disable() 前自行 save, 该参数仅兜底)。
+        """
         self._running = False
         self._enabled = False
         if self._thread:
             self._thread.join(timeout=10)
             self._thread = None
-        self._save_enabled(False)
-        logger.info("行情服务已停止")
+        if persist:
+            self._save_enabled(False)
+        logger.info("行情服务已停止%s", " (开关已置关)" if persist else "")
 
     def enable(self) -> bool:
         """开启自动行情 (不立即启动线程，等下一个交易时段)。
@@ -282,8 +291,8 @@ class QuoteService:
         return True
 
     def disable(self) -> None:
-        """关闭自动行情。"""
-        self.stop()
+        """关闭自动行情 (用户显式关闭 → 持久化开关; 进程停机走 stop() 不碰偏好)。"""
+        self.stop(persist=True)
         logger.info("行情服务已关闭")
 
     # ================================================================
@@ -798,14 +807,16 @@ class QuoteService:
         daily_df = self._build_daily(stock_records)
         if not daily_df.is_empty() and self._repo:
             try:
-                self._repo.flush_live_daily(daily_df)
+                # merge 而非 flush: 快照断页轮次缺失的标的保留上一轮日线,
+                # 避免 daily 分区行数随轮波动 (覆写会让尾盘修复任务看到残缺分区)
+                self._repo.merge_live_daily_asset("stock", daily_df)
             except Exception as e:  # noqa: BLE001
                 logger.warning("日K写盘失败: %s", e)
 
         etf_daily_df = self._build_daily(etf_records)
         if not etf_daily_df.is_empty() and self._repo:
             try:
-                self._repo.flush_live_daily_asset("etf", etf_daily_df)
+                self._repo.merge_live_daily_asset("etf", etf_daily_df)
             except Exception as e:  # noqa: BLE001
                 logger.warning("ETF 日K写盘失败: %s", e)
 
@@ -814,10 +825,15 @@ class QuoteService:
         etf_quote_extra = self._build_quote_extra(etf_records)
 
         # ---- 增量计算 enriched + 写盘 + 更新缓存 ----
+        # 股票/ETF 用 merge 语义 (2026-09-07): 全市场快照分页在盘中偶发断页
+        # (实测单轮 3949~5547 条波动), flush 覆写会让本轮缺失的标的从内存缓存
+        # 整行消失 → 自选/基金卡片该股显示 '--'。merge 轮间合并: 本轮缺失的
+        # 标的保留上一轮值 (停牌股上一轮也无今日数据, 不受影响);
+        # existing_cache 仅在缓存日期=今日时合并, 跨日首轮仍从零构建, 无旧数据污染。
         if not daily_df.is_empty() and self._repo:
-            self._flush_live_enriched(daily_df, quote_extra, asset_type="stock")
+            self._flush_live_enriched(daily_df, quote_extra, asset_type="stock", merge=True)
         if not etf_daily_df.is_empty() and self._repo:
-            self._flush_live_enriched(etf_daily_df, etf_quote_extra, asset_type="etf")
+            self._flush_live_enriched(etf_daily_df, etf_quote_extra, asset_type="etf", merge=True)
         # ---- 指数: 仅有指数监控规则时才写盘 (无规则零成本) ----
         # mode=all (完整 CN_Index universe) → flush 覆盖; mode=core (部分标的) → merge 不截断分区
         engine = getattr(self._app_state, "monitor_engine", None) if self._app_state else None
