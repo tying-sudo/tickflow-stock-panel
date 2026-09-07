@@ -103,6 +103,23 @@ def start_backend_extensions(
             logger.warning("backend extension startup failed %s: %s", module_name, exc)
 
 
+def stop_backend_extensions(
+    context: ExtensionContext,
+    registry: BackendExtensionRegistry,
+) -> None:
+    """Run optional shutdown hooks so extensions can stop timers/threads they own."""
+    for module_name in _custom_module_names():
+        try:
+            module = importlib.import_module(module_name)
+            if getattr(module, "EXTENSION_ID", None) not in registry.extension_ids():
+                continue
+            shutdown = getattr(module, "shutdown", None)
+            if callable(shutdown):
+                shutdown(context)
+        except Exception as exc:
+            logger.warning("backend extension shutdown failed %s: %s", module_name, exc)
+
+
 def current_extension_context(*, data_dir, repository) -> ExtensionContext:
     return ExtensionContext(
         api_version=BACKEND_EXTENSION_API_VERSION,

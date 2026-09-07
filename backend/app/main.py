@@ -51,6 +51,7 @@ from app.extensions.loader import (
     configure_backend_extensions,
     current_extension_context,
     start_backend_extensions,
+    stop_backend_extensions,
 )
 from app.jobs import daily_pipeline
 from app.services.matrix_prewarm_owner import MatrixCachePrewarmOwner
@@ -383,6 +384,11 @@ async def _application_lifespan(app: FastAPI):
         yield
     finally:
         repo._on_refresh_done = None  # noqa: SLF001
+        # 扩展自持的调度器/线程先停, 再逐个关核心服务
+        stop_backend_extensions(
+            current_extension_context(data_dir=store.data_dir, repository=repo),
+            extension_registry,
+        )
         if not matrix_prewarm_owner.shutdown(timeout=5.0):
             logger.warning("matrix cache prewarm did not stop within 5 seconds")
         mmanager = getattr(app.state, "mining_manager", None)
