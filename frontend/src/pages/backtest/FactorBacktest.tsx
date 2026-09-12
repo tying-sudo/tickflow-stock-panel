@@ -52,7 +52,7 @@ function LoadingPanel({ symbolsText }: { symbolsText: string }) {
           </div>
           <div className="h-8 w-8 rounded-full border-2 border-accent/25 border-t-accent animate-spin" />
         </div>
-        <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-base">
+        <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-page">
           <div className="h-full w-1/2 rounded-full bg-accent/70 animate-pulse" />
         </div>
       </div>
@@ -71,7 +71,7 @@ function LoadingPanel({ symbolsText }: { symbolsText: string }) {
           <div className="text-xs font-medium text-secondary">分层净值预览</div>
           <div className="text-[11px] text-muted">等待后端返回完整结果</div>
         </div>
-        <div className="mt-4 h-[260px] rounded-btn border border-border bg-base/60 p-4">
+        <div className="mt-4 h-[260px] rounded-btn border border-border bg-page/60 p-4">
           <div className="flex h-full items-end gap-2 opacity-70">
             {[46, 38, 54, 50, 64, 58, 74, 68, 84, 78, 90, 86].map((h, i) => (
               <div key={i} className="flex-1 rounded-t bg-accent/20 animate-pulse" style={{ height: `${h}%` }} />
@@ -190,7 +190,7 @@ export function FactorBacktest({ initialFactorName = 'momentum_20d' }: { initial
   return (
     <div className="h-full min-h-0 overflow-hidden rounded-card border border-border bg-surface/80 grid grid-cols-1 xl:grid-cols-[18rem_minmax(0,1fr)]">
       {/* 配置面板 */}
-      <section className="space-y-3 border-b xl:border-b-0 xl:border-r border-border bg-base/25 px-3 py-3 xl:overflow-y-auto">
+      <section className="space-y-3 border-b xl:border-b-0 xl:border-r border-border bg-page/25 px-3 py-3 xl:overflow-y-auto">
         <div className="border-b border-border/70 pb-2">
           <div className="text-xs font-semibold text-foreground">因子配置</div>
           <div className="mt-0.5 text-[10px] leading-4 text-muted">选择因子、区间和分组方式。默认最近 3 个月。</div>
@@ -277,7 +277,7 @@ export function FactorBacktest({ initialFactorName = 'momentum_20d' }: { initial
             </div>
           </div>
 
-          <div className="mt-2 flex rounded-input bg-base/60 p-0.5">
+          <div className="mt-2 flex rounded-input bg-page/60 p-0.5">
             <button type="button" onClick={() => applyRange(3)} className={`${rangeButtonCls('3m')} flex-1`}>3个月</button>
             <button type="button" onClick={() => applyRange(6)} className={`${rangeButtonCls('6m')} flex-1`}>6个月</button>
             <button type="button" onClick={() => applyRange(12)} className={`${rangeButtonCls('1y')} flex-1`}>1年</button>
@@ -321,7 +321,7 @@ export function FactorBacktest({ initialFactorName = 'momentum_20d' }: { initial
       </section>
 
       {/* 结果面板 */}
-      <section className="min-w-0 space-y-3 bg-base/15 px-3 py-3 xl:overflow-y-auto">
+      <section className="min-w-0 space-y-3 bg-page/15 px-3 py-3 xl:overflow-y-auto">
         {result?.error && !result.ic_mean && (
           <div className="text-sm text-danger bg-danger/10 border border-danger/30 rounded-btn px-3 py-2">
             {result.error}
@@ -368,7 +368,7 @@ export function FactorBacktest({ initialFactorName = 'momentum_20d' }: { initial
                     type="button"
                     onClick={() => saveCandidate.mutate()}
                     disabled={saveCandidate.isPending}
-                    className="inline-flex items-center gap-1 rounded-btn border border-border bg-base/50 px-2 py-1 text-[11px] text-secondary transition-colors hover:border-accent/40 hover:text-accent disabled:opacity-50"
+                    className="inline-flex items-center gap-1 rounded-btn border border-border bg-page/50 px-2 py-1 text-[11px] text-secondary transition-colors hover:border-accent/40 hover:text-accent disabled:opacity-50"
                   >
                     <BookmarkPlus className="h-3 w-3" />
                     {saveCandidate.isPending ? '保存中' : '保存候选'}

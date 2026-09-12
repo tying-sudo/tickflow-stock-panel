@@ -160,11 +160,11 @@ export function Analysis() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <label className="space-y-1.5">
                 <span className="text-[11px] text-muted">菜单标识</span>
-                <input value={id} onChange={e => setId(e.target.value.replace(/[^a-zA-Z0-9_]/g, ''))} placeholder="如 concept_hot" className="h-9 w-full rounded-btn border border-border bg-base px-3 text-xs text-foreground" />
+                <input value={id} onChange={e => setId(e.target.value.replace(/[^a-zA-Z0-9_]/g, ''))} placeholder="如 concept_hot" className="h-9 w-full rounded-btn border border-border bg-page px-3 text-xs text-foreground" />
               </label>
               <label className="space-y-1.5">
                 <span className="text-[11px] text-muted">菜单名称</span>
-                <input value={label} onChange={e => setLabel(e.target.value)} placeholder="如 概念热度" className="h-9 w-full rounded-btn border border-border bg-base px-3 text-xs text-foreground" />
+                <input value={label} onChange={e => setLabel(e.target.value)} placeholder="如 概念热度" className="h-9 w-full rounded-btn border border-border bg-page px-3 text-xs text-foreground" />
               </label>
               <label className="space-y-1.5">
                 <span className="text-[11px] text-muted">扩展数据源</span>
@@ -176,7 +176,7 @@ export function Analysis() {
                     setDimensionField(firstMatchingField(cfg, ['概念', 'industry', '行业', 'sector']))
                     setSelectedColumns(cfg?.fields.filter(f => !['symbol', 'code'].includes(f.name)).slice(0, 6).map(f => f.name) ?? [])
                   }}
-                  className="h-9 w-full rounded-btn border border-border bg-base px-3 text-xs text-foreground"
+                  className="h-9 w-full rounded-btn border border-border bg-page px-3 text-xs text-foreground"
                 >
                   {configs.map(cfg => <option key={cfg.id} value={cfg.id}>{cfg.label}</option>)}
                 </select>
@@ -186,7 +186,7 @@ export function Analysis() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <label className="space-y-1.5">
                 <span className="text-[11px] text-muted">模板</span>
-                <select value={template} onChange={e => setTemplate(e.target.value as any)} className="h-9 w-full rounded-btn border border-border bg-base px-3 text-xs text-foreground">
+                <select value={template} onChange={e => setTemplate(e.target.value as any)} className="h-9 w-full rounded-btn border border-border bg-page px-3 text-xs text-foreground">
                   <option value="dimension_rank">维度热度榜</option>
                   <option value="ranking">指标排名榜</option>
                   <option value="table">明细表</option>
@@ -194,14 +194,14 @@ export function Analysis() {
               </label>
               <label className="space-y-1.5">
                 <span className="text-[11px] text-muted">分组字段</span>
-                <select value={dimensionField} onChange={e => setDimensionField(e.target.value)} disabled={template !== 'dimension_rank'} className="h-9 w-full rounded-btn border border-border bg-base px-3 text-xs text-foreground disabled:opacity-50">
+                <select value={dimensionField} onChange={e => setDimensionField(e.target.value)} disabled={template !== 'dimension_rank'} className="h-9 w-full rounded-btn border border-border bg-page px-3 text-xs text-foreground disabled:opacity-50">
                   <option value="">请选择</option>
                   {fields.map(f => <option key={f.name} value={f.name}>{f.label || f.name}</option>)}
                 </select>
               </label>
               <label className="space-y-1.5">
                 <span className="text-[11px] text-muted">排名字段</span>
-                <select value={rankField} onChange={e => setRankField(e.target.value)} disabled={template !== 'ranking'} className="h-9 w-full rounded-btn border border-border bg-base px-3 text-xs text-foreground disabled:opacity-50">
+                <select value={rankField} onChange={e => setRankField(e.target.value)} disabled={template !== 'ranking'} className="h-9 w-full rounded-btn border border-border bg-page px-3 text-xs text-foreground disabled:opacity-50">
                   <option value="">请选择</option>
                   {numericFields.map(f => <option key={f.name} value={f.name}>{f.label || f.name}</option>)}
                 </select>

@@ -503,7 +503,7 @@ function PluginKeyConfig({ plugin }: { plugin: PluginDataSourceItem }) {
             value={keyInput}
             onChange={(e) => { setKeyInput(e.target.value); if (saved) setSaved(false) }}
             autoComplete="off"
-            className="w-full px-3 py-2 pr-9 rounded-input bg-base border border-border text-sm font-mono focus:outline-none focus:border-accent transition-colors duration-150 ease-smooth"
+            className="w-full px-3 py-2 pr-9 rounded-input bg-page border border-border text-sm font-mono focus:outline-none focus:border-accent transition-colors duration-150 ease-smooth"
           />
           <button
             type="button"
@@ -978,7 +978,7 @@ export function SettingsDataSourcesPanel({ highlight }: { highlight?: string } =
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             onClick={() => setConfirmDelete(null)}
           />
-          <div className="relative w-[90vw] max-w-[380px] rounded-card border border-border bg-base shadow-2xl p-6">
+          <div className="relative w-[90vw] max-w-[380px] rounded-card border border-border bg-page shadow-2xl p-6">
             <h3 className="text-sm font-medium text-foreground mb-2">删除数据源</h3>
             <p className="text-xs text-secondary mb-5">
               确认删除「{customList.find(s => s.name === confirmDelete)?.display_name || confirmDelete}」? 该数据源的配置文件将被移除,此操作不可撤销。

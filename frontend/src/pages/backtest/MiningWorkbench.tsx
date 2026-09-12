@@ -202,7 +202,7 @@ function SummaryStrip({ result }: { result: MiningResult }) {
     ['峰值内存', formatBytes(result.summary.peak_rss_bytes)],
   ]
   return (
-    <div className="grid grid-cols-2 border-b border-border bg-base/30 sm:grid-cols-4 xl:grid-cols-7">
+    <div className="grid grid-cols-2 border-b border-border bg-page/30 sm:grid-cols-4 xl:grid-cols-7">
       {items.map(([label, value]) => (
         <div key={label} className="min-w-0 border-b border-r border-border/60 px-3 py-2 last:border-r-0 sm:border-b-0">
           <div className="text-[9px] text-muted">{label}</div>
@@ -218,7 +218,7 @@ function RunStatus({ run, progress, error, reconnecting }: { run: MiningRun | nu
   const success = !!run && SUCCESS.has(run.status)
   const Icon = reconnecting ? RefreshCw : active ? LoaderCircle : success ? CheckCircle2 : error ? AlertTriangle : Clock3
   return (
-    <div className={`flex min-w-0 items-center gap-2 border-b border-border px-3 py-2 ${error ? 'bg-danger/5' : 'bg-base/20'}`}>
+    <div className={`flex min-w-0 items-center gap-2 border-b border-border px-3 py-2 ${error ? 'bg-danger/5' : 'bg-page/20'}`}>
       <Icon className={`h-3.5 w-3.5 shrink-0 ${reconnecting ? 'animate-spin text-warning' : active ? 'animate-spin text-accent' : success ? 'text-success' : error ? 'text-danger' : 'text-muted'}`} />
       <div className="min-w-0 flex-1">
         <div className="truncate text-[11px] font-medium text-foreground">
@@ -242,7 +242,7 @@ function RunStatus({ run, progress, error, reconnecting }: { run: MiningRun | nu
 function FactorTable({ result }: { result: MiningResult }) {
   return (
     <div className="min-w-[760px]">
-      <div className="grid grid-cols-[minmax(160px,1.5fr)_58px_repeat(7,minmax(72px,1fr))_minmax(130px,1.3fr)] border-b border-border bg-base/50 px-2 py-1.5 text-[9px] font-medium text-muted">
+      <div className="grid grid-cols-[minmax(160px,1.5fr)_58px_repeat(7,minmax(72px,1fr))_minmax(130px,1.3fr)] border-b border-border bg-page/50 px-2 py-1.5 text-[9px] font-medium text-muted">
         <span>因子</span><span>方向</span><span>评分</span><span>IC</span><span>IR</span><span>覆盖</span><span>换手</span><span>价差</span><span>Sharpe</span><span>状态</span>
       </div>
       {result.factors.map(row => (
@@ -539,7 +539,7 @@ export function MiningWorkbench() {
 
   return (
     <div className="grid min-h-[calc(100vh-9rem)] grid-cols-1 overflow-hidden rounded-card border border-border bg-surface xl:grid-cols-[20rem_minmax(0,1fr)]">
-      <aside className="border-b border-border bg-base/25 xl:max-h-[calc(100vh-9rem)] xl:overflow-y-auto xl:border-b-0 xl:border-r">
+      <aside className="border-b border-border bg-page/25 xl:max-h-[calc(100vh-9rem)] xl:overflow-y-auto xl:border-b-0 xl:border-r">
         <div className="flex items-center justify-between border-b border-border px-3 py-2">
           <div>
             <div className="text-xs font-semibold text-foreground">挖掘配置</div>
@@ -628,7 +628,7 @@ export function MiningWorkbench() {
             </div>
           </section>
 
-          <div className="sticky bottom-0 flex gap-2 bg-base/95 py-2">
+          <div className="sticky bottom-0 flex gap-2 bg-page/95 py-2">
             <button type="button" disabled={task.isPending || !draft.factorNames.length || (draft.strategyIds.length > 0 && strategyQuery.isLoading) || !validDateRange || availabilityQuery.isPending || availabilityQuery.isFetching || availabilityQuery.isError || !availabilityQuery.data?.eligible} onClick={runMining} className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-btn bg-accent px-3 text-xs font-semibold text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-50"><Play className="h-3.5 w-3.5" />开始挖掘</button>
             {task.isPending && <button type="button" title="取消任务" disabled={task.cancelling} onClick={() => void cancelMining()} className="inline-flex h-8 w-9 items-center justify-center rounded-btn border border-danger/40 text-danger hover:bg-danger/10 disabled:opacity-50"><Square className="h-3.5 w-3.5" /></button>}
           </div>
@@ -679,7 +679,7 @@ export function MiningWorkbench() {
                   <h2 className="text-xs font-semibold text-foreground">相关矩阵</h2>
                   <div className="mt-0.5 text-[9px] text-muted">阈值 {result.correlation.threshold.toFixed(2)} · 按日截面 Rank</div>
                 </div>
-                <div className="inline-flex shrink-0 rounded-btn border border-border bg-base p-0.5" aria-label="相关矩阵范围">
+                <div className="inline-flex shrink-0 rounded-btn border border-border bg-page p-0.5" aria-label="相关矩阵范围">
                   {(['selected', 'all'] as const).map(scope => (
                     <button
                       key={scope}

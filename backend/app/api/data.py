@@ -54,6 +54,11 @@ _table_cache_lock = threading.Lock()
 _last_finished_cache: dict[str, str | None] | None = None
 _last_finished_lock = threading.Lock()
 
+# 有数据的交易日列表(= enriched 分区目录名)缓存 — 供看板日历置灰非交易日
+_dates_cache: list[str] | None = None
+_dates_cache_ts: float = 0.0
+_dates_lock = threading.Lock()
+
 
 def invalidate_data_cache(table: str | None = None) -> None:
     """数据写入/清除后调用。
@@ -62,17 +67,23 @@ def invalidate_data_cache(table: str | None = None) -> None:
     指定 table 时只清那张表,不影响 storage(细粒度,用于单 stage 写完)。
     """
     with _table_cache_lock:
+        global _dates_cache, _dates_cache_ts
         if table is None:
             global _storage_cache, _storage_cache_ts, _last_finished_cache
             _storage_cache = None
             _storage_cache_ts = 0.0
             _last_finished_cache = None
+            _dates_cache = None
+            _dates_cache_ts = 0.0
             for k in _table_cache:
                 _table_cache[k] = None
                 _table_cache_ts[k] = 0.0
         elif table in _table_cache:
             _table_cache[table] = None
             _table_cache_ts[table] = 0.0
+            if table == "enriched":
+                _dates_cache = None
+                _dates_cache_ts = 0.0
 
 
 def invalidate_storage_cache() -> None:
@@ -621,6 +632,42 @@ def status(request: Request) -> dict:
         # 指标缓存就绪标志 (启动时 enriched 异步预热, 完成前为 false)
         "indicators_ready": getattr(request.app.state, "indicators_ready", True),
     }
+
+
+@router.get("/available-dates")
+def available_dates(request: Request) -> dict:
+    """有本地行情数据的交易日列表(= enriched 分区目录名), 零数据扫描。
+
+    分区只在交易日生成, 周末/节假日/未同步日天然缺席 —— 看板日历据此把
+    非交易日置灰。TTL 60s 兜底; enriched 数据写入/清除走 invalidate_data_cache
+    即时失效。
+    """
+    global _dates_cache, _dates_cache_ts
+    now = time.time()
+    with _dates_lock:
+        if _dates_cache is not None and (now - _dates_cache_ts) < 60.0:
+            return {"dates": _dates_cache}
+    enriched_dir = request.app.state.repo.store.data_dir / "kline_daily_enriched"
+    dates: list[str] = []
+    if enriched_dir.exists():
+        for d in enriched_dir.iterdir():
+            if d.is_dir() and d.name.startswith("date="):
+                dates.append(d.name[5:])
+    # 今天补入: 同步/修复窗口内当日分区可能被临时重建, 本地缺分区 ≠ 非交易日。
+    # 周末探针直判 False; 工作日探测未知(None)时按交易日放行 —— 错放行的代价是
+    # 点开当日看到空数据+同步提示, 错拉黑的代价是把交易日标成"非交易日"。
+    from app.market_time import cn_now
+    from app.services.trading_day import is_trading_day
+
+    now_cn = cn_now()
+    today = now_cn.date().isoformat()
+    if today not in dates and is_trading_day(now_cn) is not False:
+        dates.append(today)
+    dates.sort()
+    with _dates_lock:
+        _dates_cache = dates
+        _dates_cache_ts = now
+    return {"dates": dates}
 
 
 @router.post("/clear")

@@ -57,7 +57,7 @@ function ScoringRow({ name, label, weight, direction, editing, onWeightChange, o
     <div className="grid min-h-8 grid-cols-[minmax(4rem,6.5rem)_3.75rem_minmax(3.5rem,1fr)_2.25rem_1.75rem] items-center gap-1.5">
       <span className="truncate text-right text-[11px] text-secondary" title={`${label} · ${name}`}>{label}</span>
       {editing ? (
-        <div className="grid h-6 grid-cols-2 overflow-hidden rounded border border-border bg-base">
+        <div className="grid h-6 grid-cols-2 overflow-hidden rounded border border-border bg-page">
           {([['high', ArrowUp, '偏好高值'], ['low', ArrowDown, '偏好低值']] as const).map(([value, Icon, title]) => (
             <button
               key={value}
@@ -189,7 +189,7 @@ export function ScoringEditor({ value, directions, onChange, fallbackLabels = {}
             value={factorToAdd}
             onChange={event => setFactorToAdd(event.target.value)}
             disabled={factors.isLoading || factors.isError}
-            className="h-8 min-w-0 flex-1 rounded-input border border-border bg-base px-2 text-xs text-secondary focus:border-accent focus:outline-none disabled:opacity-50"
+            className="h-8 min-w-0 flex-1 rounded-input border border-border bg-page px-2 text-xs text-secondary focus:border-accent focus:outline-none disabled:opacity-50"
             aria-label="选择要添加的评分因子"
           >
             <option value="">

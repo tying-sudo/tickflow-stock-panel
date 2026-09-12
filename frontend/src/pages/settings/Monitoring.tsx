@@ -525,10 +525,10 @@ export function SettingsMonitoringPanel({ highlight }: { highlight?: string } = 
           {/* 渠道列表 — 每行一个渠道, 勾选默认 + 点行展开地址配置 */}
           <div className="space-y-2">
             {/* 飞书 (可用): 勾选默认 + 展开地址配置 */}
-            <div className="rounded-btn border border-border/60 bg-base/40 overflow-hidden">
+            <div className="rounded-btn border border-border/60 bg-page/40 overflow-hidden">
               <div
                 onClick={() => setChannelOpen(o => !o)}
-                className="flex items-center gap-2 px-2.5 py-2 cursor-pointer transition-colors hover:bg-base/60"
+                className="flex items-center gap-2 px-2.5 py-2 cursor-pointer transition-colors hover:bg-page/60"
               >
                 <input
                   type="checkbox"
@@ -551,14 +551,14 @@ export function SettingsMonitoringPanel({ highlight }: { highlight?: string } = 
 
               {/* 飞书地址配置 — 行内展开 */}
               {channelOpen && (
-                <div className="border-t border-border/60 bg-base/30 p-3">
+                <div className="border-t border-border/60 bg-page/30 p-3">
                   <label className="block space-y-1.5">
                     <span className="text-[11px] text-muted">Webhook 地址</span>
                     <input
                       value={feishuDraft}
                       onChange={e => setFeishuDraft(e.target.value)}
                       placeholder={FEISHU_PREFIX + 'xxxxxxxx'}
-                      className="h-9 w-full rounded-btn border border-border bg-base px-3 text-xs font-mono text-foreground focus:outline-none focus:border-accent/50"
+                      className="h-9 w-full rounded-btn border border-border bg-page px-3 text-xs font-mono text-foreground focus:outline-none focus:border-accent/50"
                     />
                   </label>
 
@@ -569,7 +569,7 @@ export function SettingsMonitoringPanel({ highlight }: { highlight?: string } = 
                       value={feishuSecretDraft}
                       onChange={e => setFeishuSecretDraft(e.target.value)}
                       placeholder="机器人未启用签名校验则留空"
-                      className="h-9 w-full rounded-btn border border-border bg-base px-3 text-xs font-mono text-foreground focus:outline-none focus:border-accent/50"
+                      className="h-9 w-full rounded-btn border border-border bg-page px-3 text-xs font-mono text-foreground focus:outline-none focus:border-accent/50"
                     />
                   </label>
 
@@ -611,10 +611,10 @@ export function SettingsMonitoringPanel({ highlight }: { highlight?: string } = 
             </div>
 
             {/* 企业微信群推送 Webhook (可用): 与飞书并列, 勾选默认 + 展开地址配置 */}
-            <div className="rounded-btn border border-border/60 bg-base/40 overflow-hidden">
+            <div className="rounded-btn border border-border/60 bg-page/40 overflow-hidden">
               <div
                 onClick={() => setWecomOpen(o => !o)}
-                className="flex items-center gap-2 px-2.5 py-2 cursor-pointer transition-colors hover:bg-base/60"
+                className="flex items-center gap-2 px-2.5 py-2 cursor-pointer transition-colors hover:bg-page/60"
               >
                 <input
                   type="checkbox"
@@ -636,14 +636,14 @@ export function SettingsMonitoringPanel({ highlight }: { highlight?: string } = 
               </div>
 
               {wecomOpen && (
-                <div className="border-t border-border/60 bg-base/30 p-3">
+                <div className="border-t border-border/60 bg-page/30 p-3">
                   <label className="block space-y-1.5">
                     <span className="text-[11px] text-muted">Webhook 地址 或 Key</span>
                     <input
                       value={wecomDraft}
                       onChange={e => setWecomDraft(e.target.value)}
                       placeholder={WECOM_PREFIX + '?key=xxxxxxxx' + ' 或直接填 key'}
-                      className="h-9 w-full rounded-btn border border-border bg-base px-3 text-xs font-mono text-foreground focus:outline-none focus:border-accent/50"
+                      className="h-9 w-full rounded-btn border border-border bg-page px-3 text-xs font-mono text-foreground focus:outline-none focus:border-accent/50"
                     />
                   </label>
 
@@ -685,10 +685,10 @@ export function SettingsMonitoringPanel({ highlight }: { highlight?: string } = 
             </div>
 
             {/* 企业微信智能机器人 (BotID + Secret): 长连接通道, 与群推送 Webhook 并列 */}
-            <div className="rounded-btn border border-border/60 bg-base/40 overflow-hidden">
+            <div className="rounded-btn border border-border/60 bg-page/40 overflow-hidden">
               <div
                 onClick={() => setBotOpen(o => !o)}
-                className="flex items-center gap-2 px-2.5 py-2 cursor-pointer transition-colors hover:bg-base/60"
+                className="flex items-center gap-2 px-2.5 py-2 cursor-pointer transition-colors hover:bg-page/60"
               >
                 <input
                   type="checkbox"
@@ -708,7 +708,7 @@ export function SettingsMonitoringPanel({ highlight }: { highlight?: string } = 
               </div>
 
               {botOpen && (
-                <div className="border-t border-border/60 bg-base/30 p-3">
+                <div className="border-t border-border/60 bg-page/30 p-3">
                   <p className="mb-2.5 text-[10px] text-muted leading-relaxed">
                     勾选卡片左侧开关可启用长连接保活(开启后后端持续保持与企业微信的
                     WebSocket 连接)。保存凭证后需勾选才会连接, 取消勾选则立即断开。
@@ -719,7 +719,7 @@ export function SettingsMonitoringPanel({ highlight }: { highlight?: string } = 
                       value={botIdDraft}
                       onChange={e => setBotIdDraft(e.target.value)}
                       placeholder="智能机器人的唯一标识"
-                      className="h-9 w-full rounded-btn border border-border bg-base px-3 text-xs font-mono text-foreground focus:outline-none focus:border-accent/50"
+                      className="h-9 w-full rounded-btn border border-border bg-page px-3 text-xs font-mono text-foreground focus:outline-none focus:border-accent/50"
                     />
                   </label>
 
@@ -730,7 +730,7 @@ export function SettingsMonitoringPanel({ highlight }: { highlight?: string } = 
                       value={botSecretDraft}
                       onChange={e => setBotSecretDraft(e.target.value)}
                       placeholder="开启长连接 API 模式后获取的密钥"
-                      className="h-9 w-full rounded-btn border border-border bg-base px-3 text-xs font-mono text-foreground focus:outline-none focus:border-accent/50"
+                      className="h-9 w-full rounded-btn border border-border bg-page px-3 text-xs font-mono text-foreground focus:outline-none focus:border-accent/50"
                     />
                   </label>
 

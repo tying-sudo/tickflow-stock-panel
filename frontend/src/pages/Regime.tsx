@@ -667,7 +667,7 @@ export function Regime() {
           </span>
           <div className="ml-auto flex items-center gap-2">
             {/* 时间范围按钮组 */}
-            <div className="flex items-center rounded-btn border border-border bg-base/60 p-0.5">
+            <div className="flex items-center rounded-btn border border-border bg-page/60 p-0.5">
               {(['1y', '2y', 'all'] as const).map(k => (
                 <button
                   key={k}
@@ -697,7 +697,7 @@ export function Regime() {
             </div>
             {/* 重算 */}
             <button onClick={handleRecompute} disabled={recomputing}
-              className="inline-flex items-center gap-1.5 h-7 px-3 rounded-btn border border-border bg-base text-xs text-secondary hover:text-accent disabled:opacity-50">
+              className="inline-flex items-center gap-1.5 h-7 px-3 rounded-btn border border-border bg-page text-xs text-secondary hover:text-accent disabled:opacity-50">
               {recomputing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
               {recomputing ? '重算中…' : '重算'}
             </button>
@@ -707,7 +707,7 @@ export function Regime() {
 
       {/* ── 视图切换: 市场环境 / 情绪周期 (两组内容 tab 隔离, 减少单页高度) ── */}
       <div className="flex items-center gap-2">
-        <div className="flex items-center rounded-btn border border-border bg-base/60 p-0.5">
+        <div className="flex items-center rounded-btn border border-border bg-page/60 p-0.5">
           {([['regime', '市场环境', Activity], ['phase', '情绪周期', Flame]] as const).map(([k, label, Icon]) => (
             <button key={k} onClick={() => setView(k)}
               className={cn('inline-flex items-center gap-1.5 h-7 rounded-[5px] px-3 text-xs font-medium transition-colors',
@@ -957,7 +957,7 @@ export function Regime() {
               <button
                 onClick={() => setFilterOpen(v => !v)}
                 className={cn('inline-flex items-center gap-1 rounded-btn border px-2 py-0.5 text-[10px] transition-colors',
-                  filterOpen ? 'border-accent/50 text-accent' : 'border-border bg-base text-secondary hover:text-accent')}
+                  filterOpen ? 'border-accent/50 text-accent' : 'border-border bg-page text-secondary hover:text-accent')}
               >
                 <Filter className="h-3 w-3" /> 过滤
               </button>
@@ -965,7 +965,7 @@ export function Regime() {
           }
         />
         <div className="mt-2 flex items-center gap-2">
-          <div className="flex items-center rounded-btn border border-border bg-base/60 p-0.5">
+          <div className="flex items-center rounded-btn border border-border bg-page/60 p-0.5">
             {([['concept', '概念'], ['industry', '行业']] as const).map(([k, label]) => (
               <button key={k} onClick={() => setMainlineKind(k)}
                 className={cn('h-6 rounded-[5px] px-2.5 text-xs font-medium transition-colors',
@@ -1035,7 +1035,7 @@ export function Regime() {
               </span>
               <span className="text-sm text-muted">{latest.score} 分</span>
             </div>
-            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-base">
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-page">
               <div className="h-full rounded-full transition-all"
                 style={{ width: `${Math.max(2, Math.min(100, latest.score))}%`, backgroundColor: REGIME_STATE_COLORS[latest.state] }} />
             </div>
@@ -1076,7 +1076,7 @@ export function Regime() {
               ] as const).map(d => (
                 <div key={d.label} className="flex items-center gap-1.5">
                   <span className="w-6 shrink-0 text-[9px] text-muted">{d.label}</span>
-                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-base">
+                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-page">
                     <div className="h-full rounded-full transition-all"
                       style={{ width: `${d.val ?? 0}%`, backgroundColor: d.color }} />
                   </div>
@@ -1150,7 +1150,7 @@ export function Regime() {
             hint={
               <button
                 onClick={() => setCalendarExpanded(v => !v)}
-                className="inline-flex items-center gap-1 rounded-btn border border-border bg-base px-2 py-0.5 text-[10px] text-secondary hover:text-accent hover:border-accent/40 transition-colors"
+                className="inline-flex items-center gap-1 rounded-btn border border-border bg-page px-2 py-0.5 text-[10px] text-secondary hover:text-accent hover:border-accent/40 transition-colors"
                 title={calendarExpanded ? '切换为单行紧凑' : '切换为月份展开'}
               >
                 {calendarExpanded ? <><Rows3 className="h-3 w-3" />单行</> : <><LayoutGrid className="h-3 w-3" />展开</>}
@@ -1303,19 +1303,19 @@ function MainlineFilterPanel({ filter, onDone }: {
   }
 
   return (
-    <div className="mt-2 rounded-btn border border-border bg-base/40 p-2.5">
+    <div className="mt-2 rounded-btn border border-border bg-page/40 p-2.5">
       <div className="flex flex-wrap items-end gap-3">
         <label className="flex flex-col gap-1">
           <span className="text-[10px] text-muted">成员数上限(过滤宽基标签)</span>
           <input type="number" min={50} max={5000} value={maxMembers}
             onChange={e => setMaxMembers(e.target.value)}
-            className="h-7 w-24 rounded-input border border-border bg-base px-2 text-xs text-foreground outline-none focus:border-accent" />
+            className="h-7 w-24 rounded-input border border-border bg-page px-2 text-xs text-foreground outline-none focus:border-accent" />
         </label>
         <label className="flex flex-col gap-1">
           <span className="text-[10px] text-muted">成员数下限</span>
           <input type="number" min={1} max={200} value={minMembers}
             onChange={e => setMinMembers(e.target.value)}
-            className="h-7 w-20 rounded-input border border-border bg-base px-2 text-xs text-foreground outline-none focus:border-accent" />
+            className="h-7 w-20 rounded-input border border-border bg-page px-2 text-xs text-foreground outline-none focus:border-accent" />
         </label>
         <div className="flex min-w-[220px] flex-1 flex-col gap-1">
           <span className="text-[10px] text-muted">按名称屏蔽(回车添加)</span>
@@ -1323,7 +1323,7 @@ function MainlineFilterPanel({ filter, onDone }: {
             <input value={input} onChange={e => setInput(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTag() } }}
               placeholder="如: 融资融券、沪股通"
-              className="h-7 flex-1 rounded-input border border-border bg-base px-2 text-xs text-foreground outline-none focus:border-accent" />
+              className="h-7 flex-1 rounded-input border border-border bg-page px-2 text-xs text-foreground outline-none focus:border-accent" />
           </div>
           {blacklist.length > 0 && (
             <div className="mt-1 flex flex-wrap gap-1">
@@ -1407,13 +1407,13 @@ function CustomDaysModal({ current, onClose, onApply }: {
           value={val}
           onChange={e => setVal(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') apply() }}
-          className="h-8 w-full rounded-input border border-border bg-base px-2.5 text-sm text-foreground outline-none focus:border-accent"
+          className="h-8 w-full rounded-input border border-border bg-page px-2.5 text-sm text-foreground outline-none focus:border-accent"
         />
         {/* 快捷预设 */}
         <div className="flex flex-wrap gap-1.5">
           {[60, 90, 180, 365].map(d => (
             <button key={d} onClick={() => setVal(String(d))}
-              className="h-6 rounded-btn border border-border bg-base px-2 text-[11px] text-secondary hover:text-accent hover:border-accent/40 transition-colors">
+              className="h-6 rounded-btn border border-border bg-page px-2 text-[11px] text-secondary hover:text-accent hover:border-accent/40 transition-colors">
               {d}天
             </button>
           ))}

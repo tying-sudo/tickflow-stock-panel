@@ -217,7 +217,7 @@ export function FilterPanel({ value, onChange, onClose, onReset }: {
                 value={value[f.min]}
                 onChange={(e) => set(f.min, e.target.value)}
                 step={f.step}
-                className="w-16 px-1.5 py-1 rounded-btn bg-base border border-border text-[11px] font-mono text-foreground text-center focus:outline-none focus:border-accent/50"
+                className="w-16 px-1.5 py-1 rounded-btn bg-page border border-border text-[11px] font-mono text-foreground text-center focus:outline-none focus:border-accent/50"
               />
               {isRange && (
                 <>
@@ -228,7 +228,7 @@ export function FilterPanel({ value, onChange, onClose, onReset }: {
                     value={value[f.max]}
                     onChange={(e) => set(f.max, e.target.value)}
                     step={f.step}
-                    className="w-16 px-1.5 py-1 rounded-btn bg-base border border-border text-[11px] font-mono text-foreground text-center focus:outline-none focus:border-accent/50"
+                    className="w-16 px-1.5 py-1 rounded-btn bg-page border border-border text-[11px] font-mono text-foreground text-center focus:outline-none focus:border-accent/50"
                   />
                 </>
               )}

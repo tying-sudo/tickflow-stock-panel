@@ -153,7 +153,7 @@ export function CompositeStrategyDialog({ open, onClose, onSavedId, editStrategy
           }}
         >
           <motion.div
-            className="relative flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-panel border border-border bg-base shadow-2xl"
+            className="relative flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-panel border border-border bg-page shadow-2xl"
             initial={{ scale: 0.96, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.96, opacity: 0 }}
@@ -268,7 +268,7 @@ export function CompositeStrategyDialog({ open, onClose, onSavedId, editStrategy
                           min={0}
                           value={c.weight}
                           onChange={e => updateWeight(c.strategy_id, parseFloat(e.target.value) || 0)}
-                          className="w-16 rounded border border-border bg-base px-1.5 py-0.5 text-[11px] text-foreground"
+                          className="w-16 rounded border border-border bg-page px-1.5 py-0.5 text-[11px] text-foreground"
                         />
                         <button onClick={() => removeChild(c.strategy_id)} className="text-danger/60 hover:text-danger">
                           <X className="h-3 w-3" />

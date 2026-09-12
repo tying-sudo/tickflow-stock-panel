@@ -35,6 +35,9 @@ interface GroupBarProps {
   onClearGroup?: (groupId: string) => Promise<void>
   /** 手动调整分组前后顺序 (持久化到后端) */
   onReorder?: (orderedIds: string[]) => Promise<void>
+  /** 行内操作按钮 (股票名后的 分组/移除/置顶) 可见性 — 自选页传入以在弹窗暴露开关 */
+  rowActionsVisible?: boolean
+  onToggleRowActions?: (visible: boolean) => void
 }
 
 export function WatchlistGroupBar({
@@ -49,6 +52,8 @@ export function WatchlistGroupBar({
   onDelete,
   onClearGroup,
   onReorder,
+  rowActionsVisible,
+  onToggleRowActions,
 }: GroupBarProps) {
   const [managerOpen, setManagerOpen] = useState(false)
   const [confirmClear, setConfirmClear] = useState(false)
@@ -199,7 +204,7 @@ export function WatchlistGroupBar({
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             onClick={() => setConfirmClear(false)}
           />
-          <div className="relative w-[90vw] max-w-[380px] rounded-card border border-border bg-base shadow-2xl p-6">
+          <div className="relative w-[90vw] max-w-[380px] rounded-card border border-border bg-page shadow-2xl p-6">
             <h3 className="text-sm font-medium text-foreground mb-2">清空分组</h3>
             <p className="text-xs text-secondary mb-5">
               确认清空「{tabs.find(t => t.id === selected)?.name}」分组? 分组内所有股票将转为未分组(不从自选中删除)。
@@ -231,6 +236,8 @@ export function WatchlistGroupBar({
           onRename={onRename}
           onDelete={onDelete}
           onReorder={onReorder}
+          rowActionsVisible={rowActionsVisible}
+          onToggleRowActions={onToggleRowActions}
         />
       )}
     </>
@@ -279,6 +286,8 @@ function GroupManagerDialog({
   onRename,
   onDelete,
   onReorder,
+  rowActionsVisible,
+  onToggleRowActions,
 }: Omit<GroupBarProps, 'selected' | 'total' | 'onSelect' | 'onClearGroup'> & { onClose: () => void }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const [newName, setNewName] = useState('')
@@ -398,6 +407,28 @@ function GroupManagerDialog({
           }`} />
         </button>
       </div>
+
+      {/* 行内操作按钮可见性 开关 (自选页传入; 基金自选页不传则不渲染) */}
+      {onToggleRowActions && (
+        <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+          <div className="min-w-0">
+            <div className="text-xs font-medium text-foreground">列表行内操作按钮</div>
+            <div className="mt-0.5 text-[10px] text-muted">股票名称后的 分组 / 移除 / 置顶 按钮，关闭可精简列表（移动端推荐）</div>
+          </div>
+          <button
+            type="button"
+            onClick={() => onToggleRowActions(!rowActionsVisible)}
+            className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-200 ${
+              rowActionsVisible ? 'bg-accent' : 'bg-elevated'
+            }`}
+            title={rowActionsVisible ? '已开启 — 点击关闭' : '已关闭 — 点击开启'}
+          >
+            <span className={`inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${
+              rowActionsVisible ? 'translate-x-[18px]' : 'translate-x-0.5'
+            }`} />
+          </button>
+        </div>
+      )}
 
       <div className="px-4 py-3">
         <div className="flex gap-2">
@@ -638,7 +669,7 @@ export function WatchlistGroupPicker({ groups, groupIds, symbol, disabled, onTog
             left: pos.left,
             width: POP_WIDTH,
           }}
-          className="z-50 rounded-card border border-border bg-base p-1 shadow-xl"
+          className="z-50 rounded-card border border-border bg-page p-1 shadow-xl"
           onClick={event => event.stopPropagation()}
         >
           <div className="px-2 pb-1 pt-1.5 text-[10px] text-muted">加入分组（可多选）</div>

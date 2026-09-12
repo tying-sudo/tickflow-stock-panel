@@ -223,7 +223,7 @@ export function RpsRotationDialog({ onClose, kind = 'concept' }: Props) {
               </span>
               {/* 行业层级选择器: 1/2/3 级, 默认 2 级。仅 kind=industry 显示 */}
               {kind === 'industry' && (
-                <div className="ml-1 flex items-center rounded-btn border border-border bg-base/60 p-0.5">
+                <div className="ml-1 flex items-center rounded-btn border border-border bg-page/60 p-0.5">
                   {[1, 2, 3].map(lv => (
                     <button
                       key={lv}

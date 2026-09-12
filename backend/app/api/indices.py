@@ -114,6 +114,15 @@ def get_index_minute(
     info = _index_info(repo, symbol)
     day = trade_date or date.today()
     df = kline_sync.fetch_minute_single(symbol, day, asset_type="index")
+    if df.is_empty():
+        # TDX 无此指数分时 (97/98 国证新段等, 2026-09-08) → 腾讯分时补充通道
+        # (只供最新交易日; 非交易日/历史日仍为空属预期)。
+        try:
+            from app.services import em_index_source
+
+            df = em_index_source.fetch_minute(symbol, day)
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("index minute supplement(%s) failed: %s", symbol, exc)
     return {
         "symbol": symbol,
         "name": info.get("name"),

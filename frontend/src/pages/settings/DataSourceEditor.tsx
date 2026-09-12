@@ -5,9 +5,9 @@ import { KeyRound, Play, Plus, Save, Trash2, X, Zap, Check, ChevronDown } from '
 import { api, type CustomSourceConfig, type DatasetConfig } from '@/lib/api'
 import { toast } from '@/components/Toast'
 
-// 暗色适配的标准输入框样式 (与 AI 页统一, bg-base 在暗色下为深色, 不会白底白字)
+// 暗色适配的标准输入框样式 (与 AI 页统一, bg-page 在暗色下为深色, 不会白底白字)
 const INPUT_CLS =
-  'w-full h-9 px-2.5 rounded-lg bg-base border-0 ring-1 ring-border/40 text-xs text-foreground placeholder:text-muted/30 focus:outline-none focus:ring-2 focus:ring-accent/40 transition-shadow'
+  'w-full h-9 px-2.5 rounded-lg bg-page border-0 ring-1 ring-border/40 text-xs text-foreground placeholder:text-muted/30 focus:outline-none focus:ring-2 focus:ring-accent/40 transition-shadow'
 
 const DATASETS = ['daily', 'adj_factor', 'realtime', 'minute'] as const
 type DatasetKey = typeof DATASETS[number]

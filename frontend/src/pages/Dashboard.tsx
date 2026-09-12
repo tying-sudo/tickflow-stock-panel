@@ -13,6 +13,7 @@ import { SealedBadge } from '@/components/SealedBadge'
 import { StockPreviewDialog } from '@/components/StockPreviewDialog'
 import { SettingsModal } from '@/components/data/SettingsModal'
 import { STAGE_LABELS } from '@/components/data/ActiveJobCard'
+import { toast } from '@/components/Toast'
 import { cn } from '@/lib/cn'
 import { cnSignal } from '@/lib/signals'
 import { strategyEventMeta, strategyName } from '@/lib/strategyMonitorEvents'
@@ -224,12 +225,15 @@ function MonitorWidget({ onStockClick }: { onStockClick: (event: AlertEvent) => 
 
 function KpiCell({ label, value, sub, tone = 'neutral' }: { label: ReactNode; value: ReactNode; sub?: string; tone?: 'bull' | 'bear' | 'accent' | 'neutral' }) {
   const isPlain = typeof value === 'string' || typeof value === 'number'
+  // accent 走标准 token。曾因 tailwind 颜色键 base 与字号类 text-base 撞名, .text-base{color:--base}
+  // 按字母序落在 text-accent 后把它覆盖成近黑(看似"透明"); 已改颜色键名 page + bg-base→bg-page 拆除撞名, 见 tailwind.config.ts 注释
   const color = tone === 'bull' ? 'text-bull' : tone === 'bear' ? 'text-bear' : tone === 'accent' ? 'text-accent' : 'text-foreground'
   return (
     <div className="min-w-0 overflow-hidden rounded-lg border border-border bg-surface/80 px-2 py-1 shadow-[0_1px_2px_hsl(var(--border)/0.4)] backdrop-blur-sm transition-all hover:border-accent/30 hover:shadow-[0_2px_8px_hsl(var(--accent)/0.15)]">
       <div className="flex items-center gap-1 text-[11px] text-muted">{label}</div>
-      <div className={`mt-1 truncate font-mono text-lg font-semibold leading-none tabular-nums ${isPlain ? color : 'text-foreground'}`}>{value}</div>
-      {sub && <div className="mt-1 truncate text-[10px] text-muted">{sub}</div>}
+      {/* 移动端 3 列卡内容宽 ~105px: 数值 13px(容纳最长 "4444/333/4444" 13 字符), sub 允许换行防截断; ≥md 维持 18px/单行 */}
+      <div className={`mt-1 truncate font-mono text-[13px] font-semibold leading-none tabular-nums md:text-lg ${isPlain ? color : 'text-foreground'}`}>{value}</div>
+      {sub && <div className="mt-1 leading-tight text-[10px] text-muted md:truncate">{sub}</div>}
     </div>
   )
 }
@@ -237,16 +241,21 @@ function KpiCell({ label, value, sub, tone = 'neutral' }: { label: ReactNode; va
 function IndexTicker({ item }: { item: OverviewMarket['indices'][number] }) {
   const pct = item.change_pct
   const isUp = (n(pct) ?? 0) >= 0
+  // 日K兜底行 (实时缺席): quote_date 非今日 → 弱化 + tooltip 注明数据日期
+  const quoteDate = typeof item.quote_date === 'string' ? item.quote_date : null
+  const stale = !!quoteDate && quoteDate !== new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' })
   return (
     <Link
       to={`/indices?symbol=${encodeURIComponent(item.symbol)}`}
-      className="grid min-w-0 grid-cols-[1fr_auto] items-center gap-x-2 gap-y-0.5 rounded-lg border border-border bg-elevated/45 px-1.5 py-1 shadow-[0_1px_1px_hsl(var(--border)/0.3)] backdrop-blur-sm transition-all hover:border-accent/40 hover:bg-elevated hover:shadow-[0_2px_6px_hsl(var(--accent)/0.15)]"
+      title={stale ? `实时行情缺席，数据截至 ${quoteDate} 收盘` : undefined}
+      className={`grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-1.5 gap-y-0.5 rounded-lg border border-border bg-elevated/45 px-1.5 py-1 shadow-[0_1px_1px_hsl(var(--border)/0.3)] backdrop-blur-sm transition-all hover:border-accent/40 hover:bg-elevated hover:shadow-[0_2px_6px_hsl(var(--accent)/0.15)] md:gap-x-2 ${stale ? 'opacity-60' : ''}`}
     >
       <div className="truncate text-xs font-medium text-foreground">{item.name || item.symbol}</div>
       <div className={`font-mono text-xs font-semibold ${pctClass(pct)}`}>{fmtIndexPct(pct)}</div>
-      <div className="font-mono text-[10px] text-muted">{item.symbol}</div>
-      <div className={`flex items-center gap-1 font-mono text-[11px] ${pctClass(pct)}`}>
-        {isUp ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
+      <div className="truncate font-mono text-[10px] text-muted">{item.symbol}</div>
+      <div className={`flex items-center justify-end gap-1 font-mono text-[10px] md:text-[11px] ${pctClass(pct)}`}>
+        {/* 移动端 3 列时卡宽 ~118px, 箭头图标会撑破右侧轨道, 仅桌面显示; 价格 10px 防 5 位数点位挤压名称 */}
+        {isUp ? <ArrowUpRight className="hidden h-3 w-3 md:block" /> : <ArrowDownRight className="hidden h-3 w-3 md:block" />}
         {fmtPrice(item.last_price)}
       </div>
     </Link>
@@ -378,7 +387,7 @@ function LadderMini({ limit }: { limit: OverviewMarket['limit'] }) {
           <div key={t.boards} className="rounded bg-elevated/35 px-2 py-1.5">
             <div className="grid grid-cols-[42px_1fr_auto] items-center gap-2">
               <span className={`font-mono text-sm font-bold ${t.boards >= 5 ? 'text-bull' : t.boards >= 3 ? 'text-accent' : 'text-secondary'}`}>{t.boards}板</span>
-              <div className="h-1.5 overflow-hidden rounded-full bg-base">
+              <div className="h-1.5 overflow-hidden rounded-full bg-page">
                 <div className="h-full rounded-full bg-bull/70" style={{ width: `${Math.min(100, t.count * 12)}%` }} />
               </div>
               <span className="font-mono text-xs text-foreground">{t.count}</span>
@@ -571,6 +580,13 @@ export function Dashboard() {
   // 首次使用(无数据 + 未完成引导)自动弹窗: 同一会话只弹一次
   const [showWelcomeModal, setShowWelcomeModal] = useState(false)
   const dataStatus = useDataStatus({ staleTime: 60_000 })
+  // 有数据的交易日列表(= 本地 enriched 分区): 日历据此置灰非交易日
+  const availableDates = useQuery({
+    queryKey: QK.dataDates,
+    queryFn: api.dataAvailableDates,
+    staleTime: 60_000,
+  })
+  const tradeDates = availableDates.data?.dates
   const overview = useQuery({
     queryKey: QK.overviewMarket(selectedDate),
     queryFn: () => api.overviewMarket(selectedDate),
@@ -641,8 +657,17 @@ export function Dashboard() {
     if (fetchSucceeded) {
       qc.invalidateQueries({ queryKey: QK.dataStatus })
       qc.invalidateQueries({ queryKey: QK.overviewMarket(undefined) })
+      qc.invalidateQueries({ queryKey: QK.dataDates })
     }
   }, [fetchSucceeded, qc])
+
+  // 误选回落: 日历已置灰非交易日, 但当前选中日在本地无数据(非交易日/未同步)时提示并切回最新交易日
+  useEffect(() => {
+    if (!selectedDate || !tradeDates || tradeDates.length === 0) return
+    if (tradeDates.includes(selectedDate)) return
+    toast(`${selectedDate} 为非交易日或暂无数据, 已切回最近交易日`, 'info')
+    setSelectedDate(undefined)
+  }, [selectedDate, tradeDates])
 
   // 组件重新挂载时(从其他页面切回)恢复正在运行的同步任务进度。
   // 原因: fetchJobId 是组件内状态, 切走页面时组件卸载、状态丢失, 切回后进度卡片消失。
@@ -670,7 +695,7 @@ export function Dashboard() {
 
   if (overview.isLoading && !data) {
     return (
-      <div className="flex h-full items-center justify-center bg-base">
+      <div className="flex h-full items-center justify-center bg-page">
         <div className="flex items-center gap-2 text-sm text-muted">
           <Loader2 className="h-4 w-4 animate-spin" /> 加载市场看板…
         </div>
@@ -680,7 +705,7 @@ export function Dashboard() {
 
   if (!data) {
     return (
-      <div className="flex h-full items-center justify-center bg-base p-6">
+      <div className="flex h-full items-center justify-center bg-page p-6">
         <div className="rounded-card border border-border bg-surface p-6 text-center">
           <div className="text-sm text-danger">看板加载失败</div>
           <button onClick={() => overview.refetch()} className="mt-3 rounded-btn bg-accent px-3 py-1.5 text-xs font-medium text-base">重试</button>
@@ -693,6 +718,9 @@ export function Dashboard() {
   const strongUp = data.breadth.strong_up ?? 0
   const strongDown = data.breadth.strong_down ?? 0
   const latestDate = dataStatus.data?.enriched?.latest_date ?? null
+  // 日历边界与置灰集合用同一来源(交易日列表), 避免两个缓存不同步时把交易日误判出界
+  const tradeMin = tradeDates?.length ? tradeDates[0] : (dataStatus.data?.enriched?.earliest_date ?? undefined)
+  const tradeMax = tradeDates?.length ? tradeDates[tradeDates.length - 1] : (latestDate ?? undefined)
   const currentDate = selectedDate ?? data.as_of ?? ''
   const quoteRunning = (!selectedDate || selectedDate === latestDate) && data.quote_status?.running
   // 实时模式: none / watchlist / full_market。
@@ -700,7 +728,24 @@ export function Dashboard() {
   const quoteMode = data.quote_status?.mode as ('none' | 'watchlist' | 'full_market') | undefined
 
   return (
-    <div className="min-h-full bg-base p-1.5">
+    <div className="min-h-full bg-page p-1.5">
+      {/* 流式切换指示: 换日期/刷新时旧数据经 placeholderData 原位保留, 顶部进度条提示新数据正在装入 */}
+      <AnimatePresence>
+        {overview.isFetching && (
+          <motion.div
+            className="fixed inset-x-0 top-0 z-[70] h-0.5 overflow-hidden"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <motion.div
+              className="h-full w-1/3 rounded-full bg-gradient-to-r from-accent/20 via-accent to-accent/20"
+              animate={{ x: ['-100%', '300%'] }}
+              transition={{ repeat: Infinity, duration: 1.1, ease: 'linear' }}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
       {/* 无本地数据常驻引导卡片 —— 一键触发盘后管道获取数据(无 Key 也可) */}
       {hasNoData && (
         <FetchDataCard
@@ -744,18 +789,24 @@ export function Dashboard() {
             {data.emotion.label} · {score}
           </span>
         </div>
-        <div className="flex items-center gap-3 text-[11px] text-muted">
+        {/* ml-auto: 移动端换行后仍贴右侧(单元素行 justify-between 会靠左); 桌面同行时冗余无害 */}
+        <div className="ml-auto flex items-center gap-3 text-[11px] text-muted">
           {currentDate ? (
-            <DatePicker
-              value={currentDate}
-              onChange={setSelectedDate}
-              min={dataStatus.data?.enriched?.earliest_date ?? undefined}
-              max={latestDate ?? undefined}
-              className="w-32"
-            />
+            <div className="hidden md:block">
+              <DatePicker
+                value={currentDate}
+                onChange={setSelectedDate}
+                min={tradeMin}
+                max={tradeMax}
+                enabledDates={tradeDates}
+                onDisabledDateClick={(d) => toast(`${d} 为非交易日, 无行情数据`, 'info')}
+                className="w-32"
+              />
+            </div>
           ) : (
             <span className="font-mono text-secondary">—</span>
           )}
+          {overview.isFetching && <Loader2 className="h-3 w-3 animate-spin text-accent" />}
           <span className="flex items-center gap-1"><Timer className="h-3 w-3" />{quoteAge(data.quote_status?.quote_age_ms)}</span>
           <span className={quoteRunning ? 'text-accent' : 'text-warning'}>{quoteRunning ? '实时' : '非实时'}</span>
           <button
@@ -766,6 +817,21 @@ export function Dashboard() {
             <RefreshCw className={`h-3 w-3 ${manualFetching ? 'animate-spin' : ''}`} />重载
           </button>
         </div>
+        {/* 移动端: 日期选择器贴卡片右下角——绝对定位锚定卡片(父 relative, right-0/bottom-0 即边框内缘), 不经 flex/margin/transform 规避手机内核兼容差; h-7 占位行保两行高度(选择器高 h-7); 桌面隐藏走顶部行内 */}
+        {currentDate && <div className="h-7 basis-full md:hidden" />}
+        {currentDate && (
+          <div className="absolute bottom-0 right-0 md:hidden">
+            <DatePicker
+              value={currentDate}
+              onChange={setSelectedDate}
+              min={tradeMin}
+              max={tradeMax}
+              enabledDates={tradeDates}
+              onDisabledDateClick={(d) => toast(`${d} 为非交易日, 无行情数据`, 'info')}
+              className="w-32"
+            />
+          </div>
+        )}
       </div>
 
       {/* 自选实时模式提示: 大盘看板为盘后数据, 仅自选股实时。避免用户误读为全市场实时。 */}
@@ -780,11 +846,13 @@ export function Dashboard() {
         </div>
       )}
 
-      <div className="mb-1.5 grid grid-cols-4 gap-1">
+      {/* 指数卡片: auto-fit 按添加数量自适应 — N 个恰好 N 等分铺满整行(PC 不留空位);
+          最小轨 112px: 375px 手机 (363+4)/(112+4)=3.16 → 一行 3 个, 360px 机也保 3 列 */}
+      <div className="mb-1.5 grid grid-cols-[repeat(auto-fit,minmax(112px,1fr))] gap-1">
         {data.indices.map(item => <IndexTicker key={item.symbol} item={item} />)}
       </div>
 
-      <div className="mb-1.5 grid grid-cols-6 gap-1">
+      <div className="mb-1.5 grid grid-cols-3 gap-1 md:grid-cols-6">
         <KpiCell label="个股涨 / 平 / 跌" value={<><span className="text-bull">{data.breadth.up}</span><span className="text-muted">/</span><span className="text-muted">{data.breadth.flat}</span><span className="text-muted">/</span><span className="text-bear">{data.breadth.down}</span></>} sub={`上涨率 ${data.breadth.up_pct.toFixed(1)}%`} />
         <KpiCell label="强势 / 弱势" value={<><span className="text-bull">{strongUp}</span><span className="text-muted">/</span><span className="text-bear">{strongDown}</span></>} sub="涨跌 ≥3%" />
         <KpiCell label={<span className="inline-flex items-center gap-1">涨停 / 跌停<SealedBadge degraded={isSealedDegrade} hasDepth={hasDepth} isHistorical={false} sealedReady={sealedReady} sealedCountsUp={{ real: data.limit.limit_up, fake: data.limit.fake_up ?? 0, pending: 0 }} sealedCountsDown={{ real: data.limit.limit_down, fake: data.limit.fake_down ?? 0, pending: 0 }} rawUp={data.limit.limit_up + (data.limit.fake_up ?? 0)} rawDown={data.limit.limit_down + (data.limit.fake_down ?? 0)} invalidateKeys={['overview-market', 'limit-ladder']} /></span>} value={<><span className="text-bull">{data.limit.limit_up}</span><span className="text-muted">/</span><span className="text-bear">{data.limit.limit_down}</span></>} sub={`封板率 ${(data.limit.seal_rate ?? 0).toFixed(0)}%`} />

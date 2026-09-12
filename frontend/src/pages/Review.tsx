@@ -414,13 +414,13 @@ export function Review() {
                   <input
                     type="number" min={0} max={23} value={draft.hour}
                     onChange={e => setDraft(d => ({ ...d, hour: Math.max(0, Math.min(23, Number(e.target.value))) }))}
-                    className="w-12 px-1.5 py-1 rounded-btn bg-base border border-border text-xs font-mono text-foreground text-center focus:outline-none focus:border-accent/50"
+                    className="w-12 px-1.5 py-1 rounded-btn bg-page border border-border text-xs font-mono text-foreground text-center focus:outline-none focus:border-accent/50"
                   />
                   <span className="text-xs text-muted">:</span>
                   <input
                     type="number" min={0} max={59} value={draft.minute}
                     onChange={e => setDraft(d => ({ ...d, minute: Math.max(0, Math.min(59, Number(e.target.value))) }))}
-                    className="w-12 px-1.5 py-1 rounded-btn bg-base border border-border text-xs font-mono text-foreground text-center focus:outline-none focus:border-accent/50"
+                    className="w-12 px-1.5 py-1 rounded-btn bg-page border border-border text-xs font-mono text-foreground text-center focus:outline-none focus:border-accent/50"
                   />
                   <span className="text-[10px] text-muted/70">不早于 15:00 · 工作日执行</span>
                 </div>
@@ -442,7 +442,7 @@ export function Review() {
                       'flex w-full items-center gap-2 rounded-btn border px-2.5 py-1.5 text-left transition-colors disabled:opacity-50',
                       reviewPushChannels.includes('feishu')
                         ? 'border-accent/40 bg-accent/10'
-                        : 'border-border/60 bg-base/40 hover:bg-base/60',
+                        : 'border-border/60 bg-page/40 hover:bg-page/60',
                     )}
                   >
                     <span className={cn('flex h-3 w-3 shrink-0 items-center justify-center rounded border', reviewPushChannels.includes('feishu') ? 'border-accent bg-accent text-white' : 'border-border')}>
@@ -463,7 +463,7 @@ export function Review() {
                       'flex w-full items-center gap-2 rounded-btn border px-2.5 py-1.5 text-left transition-colors disabled:opacity-50',
                       reviewPushChannels.includes('wecom')
                         ? 'border-accent/40 bg-accent/10'
-                        : 'border-border/60 bg-base/40 hover:bg-base/60',
+                        : 'border-border/60 bg-page/40 hover:bg-page/60',
                     )}
                   >
                     <span className={cn('flex h-3 w-3 shrink-0 items-center justify-center rounded border', reviewPushChannels.includes('wecom') ? 'border-accent bg-accent text-white' : 'border-border')}>
@@ -928,7 +928,7 @@ function _DtSummaryRow({ label, items, pick, onOpenStock }: {
       {/* 固定宽度标签槽: 无标签行(净卖)也占位, 保证四行药丸左缘对齐 */}
       <span className="flex w-16 shrink-0">
         {label && (
-          <span className="rounded-full bg-base/70 px-2 py-0.5 text-[9px] font-medium tracking-wide text-muted">
+          <span className="rounded-full bg-page/70 px-2 py-0.5 text-[9px] font-medium tracking-wide text-muted">
             {label}
           </span>
         )}
@@ -1258,7 +1258,7 @@ function DragonTigerCard({ date, onOpenStock }: {
           >
             <div className="border-t border-border/60 px-4 py-3">
               {/* 分段式 tab */}
-              <div className="mb-2.5 inline-flex items-center gap-0.5 rounded-full border border-border/50 bg-base/70 p-0.5">
+              <div className="mb-2.5 inline-flex items-center gap-0.5 rounded-full border border-border/50 bg-page/70 p-0.5">
                 {_DT_TABS.map(t => (
                   <button
                     key={t.key}

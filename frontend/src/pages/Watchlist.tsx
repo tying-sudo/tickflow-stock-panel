@@ -314,7 +314,7 @@ function StockSearchBox({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
             transition={{ duration: 0.12, ease: [0.16, 1, 0.3, 1] }}
-            className="absolute right-0 top-full mt-1 z-50 w-72 max-h-[320px] overflow-y-auto rounded-card border border-border bg-base shadow-xl"
+            className="absolute right-0 top-full mt-1 z-50 w-72 max-h-[320px] overflow-y-auto rounded-card border border-border bg-page shadow-xl"
           >
             {results.map((r, i) => {
               const entryGids = existingBySymbol.get(r.symbol)
@@ -653,6 +653,13 @@ export function Watchlist() {
   const [viewMode, setViewMode] = useState<'table' | 'card'>(() => {
     return (storage.watchlistView.get('table') as 'table' | 'card')
   })
+  // 行内操作按钮 (股票名后的 分组/移除/置顶) 可见性 — 管理自选分组弹窗开关,
+  // 移动端关闭可精简列表; 默认显示与桌面一致
+  const [rowActionsVisible, setRowActionsVisible] = useState(() => storage.watchlistRowActions.get(true))
+  const toggleRowActions = useCallback((visible: boolean) => {
+    setRowActionsVisible(visible)
+    storage.watchlistRowActions.set(visible)
+  }, [])
   // 分组卡片总览: 临时整页模式, 不持久化; 关闭(含刷新)后回到原视图设置
   const [groupCardsOpen, setGroupCardsOpen] = useState(false)
   // 分组统计条: 顶部图形化分组涨跌概览, 会话内开关, 不影响个股视图设置
@@ -1257,6 +1264,7 @@ export function Watchlist() {
     <div className="flex flex-col h-full">
       <PageHeader
         title="自选股"
+        stackTitleOnMobile
         titleExtra={
           <span className="inline-flex items-center gap-1.5">
             {/* 计数胶囊: 显示数/总数, mono 字体突出数字 */}
@@ -1289,7 +1297,8 @@ export function Watchlist() {
           </span>
         }
         right={
-          <div className="flex items-center gap-2">
+          /* 窄屏 (移动端) flex-wrap 自动换行成双排; 桌面宽度足够不触发, 视觉不变 */
+          <div className="flex flex-wrap items-center justify-end gap-1.5 md:gap-2">
             {/* 筛选 / 重置 / 搜索 */}
             <button
               onClick={() => setFilterOpen(v => !v)}
@@ -1337,7 +1346,7 @@ export function Watchlist() {
             >
               <ImagePlus className="h-4 w-4" />
             </button>
-            <div className="w-px h-5 bg-border" />
+            <div className="hidden md:block w-px h-5 bg-border" />
             {/* 视图 */}
             <button
               onClick={toggleView}
@@ -1374,7 +1383,7 @@ export function Watchlist() {
             >
               <BarChart3 className="h-4 w-4" />
             </button>
-            <div className="w-px h-5 bg-border" />
+            <div className="hidden md:block w-px h-5 bg-border" />
             {/* 自定义列 / 刷新 */}
             <button
               onClick={() => setCustomizerOpen(true)}
@@ -1393,7 +1402,7 @@ export function Watchlist() {
             </button>
             {allSymbols.length > 0 && (
               <>
-                <div className="w-px h-5 bg-border" />
+                <div className="hidden md:block w-px h-5 bg-border" />
                 <button
                   onClick={() => setConfirmClear(true)}
                   className="inline-flex items-center justify-center h-8 w-8 rounded-btn bg-danger/10 text-danger hover:bg-danger/20 transition-colors duration-150 ease-smooth"
@@ -1441,6 +1450,8 @@ export function Watchlist() {
         onDelete={groupId => deleteGroup.mutateAsync(groupId).then(() => undefined)}
         onClearGroup={groupId => clearGroup.mutateAsync(groupId).then(() => undefined)}
         onReorder={orderedIds => reorderGroup.mutateAsync(orderedIds).then(() => undefined)}
+        rowActionsVisible={rowActionsVisible}
+        onToggleRowActions={toggleRowActions}
       />
 
       {/* 筛选栏 */}
@@ -1671,7 +1682,7 @@ export function Watchlist() {
                             {r.symbol}
                           </span>
                           {name && (
-                            <span className="text-xs text-secondary truncate group-hover:text-foreground transition-colors duration-150">
+                            <span className="min-w-0 text-xs text-secondary truncate group-hover:text-foreground transition-colors duration-150">
                               {name}
                             </span>
                           )}
@@ -1682,7 +1693,9 @@ export function Watchlist() {
                           ) : null}
                           {monitoredSymbols.has(r.symbol) && <span className="ml-2"><RealtimeDot /></span>}
                         </button>
-                        {/* 删除入口：从分组移除 + 从自选移除(二次确认) + 移到顶部 */}
+                        {/* 删除入口：从分组移除 + 从自选移除(二次确认) + 移到顶部
+                            — 可在「管理自选分组」弹窗关闭以精简列表 (移动端) */}
+                        {rowActionsVisible && (
                         <div className="ml-auto pl-1 shrink-0">
                           {confirmRemove === r.symbol ? (
                             <div className="flex items-center gap-1">
@@ -1739,6 +1752,7 @@ export function Watchlist() {
                             </div>
                           )}
                         </div>
+                        )}
                       </div>
                     </td>
                   )
@@ -1868,7 +1882,7 @@ export function Watchlist() {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.97, y: 8 }}
               transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-              className="relative w-[90vw] max-w-[380px] rounded-card border border-border bg-base shadow-2xl p-6"
+              className="relative w-[90vw] max-w-[380px] rounded-card border border-border bg-page shadow-2xl p-6"
             >
               <h3 className="text-sm font-medium text-foreground mb-2">确认清空自选</h3>
               <p className="text-xs text-secondary mb-5">

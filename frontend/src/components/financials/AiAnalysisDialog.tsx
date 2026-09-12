@@ -224,7 +224,7 @@ export function AiAnalysisDialog({ task, mode, minimized }: Props) {
                 disabled={isWorking}
                 placeholder={isHistory ? '修改关注重点,回车重新生成' : (phase === 'done' ? '如:重点看债务风险…回车重新分析' : '可留空,留空则全面分析')}
                 className={cn(
-                  'flex-1 h-8 px-3 rounded-lg bg-base ring-1 ring-border/30 text-xs text-foreground placeholder:text-muted/40',
+                  'flex-1 h-8 px-3 rounded-lg bg-page ring-1 ring-border/30 text-xs text-foreground placeholder:text-muted/40',
                   'focus:outline-none focus:ring-2 focus:ring-purple-400/30 transition-shadow disabled:opacity-50',
                 )}
               />

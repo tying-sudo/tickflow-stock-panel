@@ -13,7 +13,8 @@ from __future__ import annotations
 
 import math
 import re
-from datetime import date
+from concurrent.futures import ThreadPoolExecutor
+from datetime import date, timedelta
 from typing import Any
 
 import polars as pl
@@ -92,6 +93,21 @@ def _score(value: float, low: float, high: float) -> int:
 # 指数行情(实时 quote_service 优先,回退 kline_index_daily SQL)
 # ================================================================
 
+def _index_name_map(repo) -> dict[str, str]:
+    """指数代码 → 名称: 核心四指数 + 本地指数表 (看板自定义指数名称解析)。"""
+    names = dict(CORE_INDEX_NAMES)
+    if repo is not None:
+        try:
+            df = repo.get_index_instruments()
+            if not df.is_empty() and "symbol" in df.columns and "name" in df.columns:
+                for sym, nm in zip(df["symbol"].to_list(), df["name"].to_list()):
+                    if sym and nm:
+                        names.setdefault(str(sym), str(nm))
+        except Exception:  # noqa: BLE001
+            pass
+    return names
+
+
 def _quote_status(quote_service) -> dict:
     qs = quote_service
     if not qs:
@@ -99,15 +115,30 @@ def _quote_status(quote_service) -> dict:
     return qs.status()
 
 
-def _index_quotes(repo, quote_service, as_of: date | None = None) -> list[dict]:
+def index_quotes(repo, quote_service, as_of: date | None = None, symbols: list[str] | None = None) -> list[dict]:
+    """指数行情: 实时缓存优先, 实时缺席的指数按 symbol 回退日K最近收盘。
+
+    symbols 为看板指数卡片列表 (偏好 dashboard_index_symbols, 可含用户自选指数),
+    None/空 = 默认四大核心指数。
+
+    逐 symbol 兜底 (2026-09-08): 实时缓存每轮整包替换, 上游批次级空包会让
+    个别指数缺席 (曾见深证成指/创业板指整卡 '--'); 97/98 开头国证新指数
+    TDX 无实时源。两类缺口都用 kline_index_daily 最近收盘补齐, 行带
+    quote_date 供前端对非当日数据弱化展示。
+    """
+    symbols = [s for s in (symbols or list(CORE_INDEX_SYMBOLS)) if s]
+    names = _index_name_map(repo)
     rows: list[dict] = []
     if quote_service and as_of is None:
-        df = quote_service.get_index_quotes(list(CORE_INDEX_SYMBOLS))
+        df = quote_service.get_index_quotes(symbols)
         if not df.is_empty():
             rows = df.to_dicts()
 
-    if not rows and repo:
-        placeholders = ", ".join("?" for _ in CORE_INDEX_SYMBOLS)
+    cached = {r.get("symbol") for r in rows}
+    missing = [s for s in symbols if s not in cached]
+    if missing and repo:
+        placeholders = ", ".join("?" for _ in missing)
+        floor = (as_of or date.today()) - timedelta(days=30)
         try:
             db_rows = repo.execute_all(
                 f"""
@@ -117,6 +148,7 @@ def _index_quotes(repo, quote_service, as_of: date | None = None) -> list[dict]:
                     FROM kline_index_daily
                     WHERE symbol IN ({placeholders})
                       AND (? IS NULL OR date <= ?)
+                      AND date >= ?
                 ), latest AS (
                     SELECT symbol,
                            max(CASE WHEN rn = 1 THEN date END) AS date,
@@ -129,7 +161,7 @@ def _index_quotes(repo, quote_service, as_of: date | None = None) -> list[dict]:
                 SELECT symbol, date, last_price, prev_close
                 FROM latest
                 """,
-                [*CORE_INDEX_SYMBOLS, as_of, as_of],
+                [*missing, as_of, as_of, floor],
             )
         except Exception:  # noqa: BLE001
             db_rows = []
@@ -143,7 +175,7 @@ def _index_quotes(repo, quote_service, as_of: date | None = None) -> list[dict]:
                 change_pct = change_amount / pc * 100
             rows.append({
                 "symbol": symbol,
-                "name": CORE_INDEX_NAMES.get(symbol),
+                "name": names.get(symbol),
                 "date": str(dt) if dt else None,
                 "last_price": lp,
                 "close": lp,
@@ -154,14 +186,15 @@ def _index_quotes(repo, quote_service, as_of: date | None = None) -> list[dict]:
 
     by_symbol = {r.get("symbol"): r for r in rows}
     out = []
-    for symbol in CORE_INDEX_SYMBOLS:
+    for symbol in symbols:
         r = by_symbol.get(symbol, {"symbol": symbol})
         out.append({
             "symbol": symbol,
-            "name": r.get("name") or CORE_INDEX_NAMES[symbol],
+            "name": r.get("name") or names.get(symbol) or symbol,
             "last_price": _finite(r.get("last_price") if r.get("last_price") is not None else r.get("close")),
             "change_pct": _finite(r.get("change_pct")),
             "change_amount": _finite(r.get("change_amount")),
+            "quote_date": r.get("date"),
         })
     return out
 
@@ -252,7 +285,33 @@ def _symbol_keys(row: dict, config: ExtConfig) -> list[str]:
     return keys
 
 
-def _dimension_rank(rows: list[dict], repo, kind: str, limit: int = 5, level: int | None = None) -> dict:
+def _ext_targets(configs: list[ExtConfig]) -> dict[str, list[tuple[ExtConfig, str]]]:
+    """按维度收集需要读取的 (config, field) 对。
+
+    概念/行业可能命中同一配置的不同字段; 调用方按 (config.id, field)
+    去重读取, 避免同一扩展文件被两个维度各读一遍(旧实现串行读两遍)。
+    """
+    targets: dict[str, list[tuple[ExtConfig, str]]] = {"concept": [], "industry": []}
+    for config in configs:
+        for kind in targets:
+            field = _dimension_field(config, kind)
+            if field:
+                targets[kind].append((config, field))
+    return targets
+
+
+def _rank_from_ext_items(
+    rows: list[dict],
+    ext_items: list[tuple[ExtConfig, str, list[dict]]],
+    kind: str,
+    limit: int = 5,
+    level: int | None = None,
+) -> dict:
+    """从预读的扩展行聚合维度排名 — 读盘已在并行阶段完成, 此处纯内存。
+
+    ext_items: [(config, field, ext_rows)], 聚合口径与旧 `_dimension_rank`
+    (每个 kind 现场读盘) 完全一致, 仅把读盘挪到并行阶段并跨维度去重。
+    """
     if not rows:
         return {"leading": [], "lagging": []}
 
@@ -264,15 +323,11 @@ def _dimension_rank(rows: list[dict], repo, kind: str, limit: int = 5, level: in
         quote_map[symbol] = row
         quote_map[symbol.split(".", 1)[0]] = row
 
-    store = ExtConfigStore(repo.store.data_dir)
     groups: dict[str, dict[str, dict]] = {}
     group_source: dict[str, str] = {}  # 组名 → 首个命中的扩展字段 "configId.field" (看板成分股弹窗用)
-    for config in store.load_all():
-        field = _dimension_field(config, kind)
-        if not field:
-            continue
+    for config, field, ext_rows in ext_items:
         source_field = f"{config.id}.{field}"
-        for ext_row in _read_ext_rows(repo.store.data_dir, config, field):
+        for ext_row in ext_rows:
             quote = None
             for key in _symbol_keys(ext_row, config):
                 quote = quote_map.get(key)
@@ -373,6 +428,7 @@ def build_market_overview(
     quote_service=None,
     depth_service=None,
     as_of: date | None = None,
+    index_symbols: list[str] | None = None,
 ) -> dict:
     """装配市场总览(与原 overview._build_overview 行为一致)。
 
@@ -381,20 +437,21 @@ def build_market_overview(
         quote_service: QuoteService(可选;实时指数行情来源)。
         depth_service: DepthService(可选;五档封板修正)。
         as_of: 指定日期,None 则取最新有数据日。
+        index_symbols: 看板指数卡片列表,None/空 = 默认四大核心指数。
     """
+    index_symbols = [s for s in (index_symbols or list(CORE_INDEX_SYMBOLS)) if s]
     svc = ScreenerService(repo)
     # 调用方未指定日期时视为"最新"请求: 指数行情走实时缓存 (quote_service),
     # 其余装配仍以解析出的真实日期为准。显式指定日期(历史复盘)时才回退数据库。
     explicit_as_of = as_of is not None
     as_of = as_of or svc.latest_date()
     status = _quote_status(quote_service)
-    indices = _index_quotes(repo, quote_service, None if not explicit_as_of else as_of)
 
     if not as_of:
         return {
             "as_of": None,
             "quote_status": status,
-            "indices": indices,
+            "indices": index_quotes(repo, quote_service, None if not explicit_as_of else as_of, index_symbols),
             "breadth": {"total": 0, "up": 0, "down": 0, "flat": 0, "up_pct": 0, "down_pct": 0},
             "amount": {"total": 0, "avg": 0},
             "boards": [],
@@ -412,7 +469,41 @@ def build_market_overview(
             "industry_rank": {"leading": [], "lagging": []},
         }
 
-    df = svc._load_enriched_for_date(as_of)
+    # ── 并行阶段: 互不依赖的 IO 一次并发, 总耗时≈最慢一路而非四路累加 ──
+    # 看板切历史交易日慢的主因是串行装配: enriched 行加载(历史日可能触发
+    # 指标重算) + 指数查询 + 五档封板修正 + 扩展数据(概念/行业各读一遍盘)。
+    # 线程安全: repo.execute_all 自带锁+独立 cursor, polars 读路径无共享写,
+    # depth get_sealed_map 为内存/落盘缓存只读。
+    data_dir = repo.store.data_dir
+    ext_targets = _ext_targets(ExtConfigStore(data_dir).load_all())
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        fut_rows = pool.submit(svc._load_enriched_for_date, as_of)
+        fut_indices = pool.submit(
+            index_quotes, repo, quote_service, None if not explicit_as_of else as_of, index_symbols,
+        )
+        # 同一 (config, field) 只读一次盘, 概念/行业维度共享同一份结果
+        fut_ext: dict[tuple[str, str], Any] = {}
+        for pairs in ext_targets.values():
+            for config, field in pairs:
+                fut_ext.setdefault(
+                    (config.id, field),
+                    pool.submit(_read_ext_rows, data_dir, config, field),
+                )
+        fut_seal_up = (
+            pool.submit(depth_service.get_sealed_map, as_of, False) if depth_service else None
+        )
+        fut_seal_dn = (
+            pool.submit(depth_service.get_sealed_map, as_of, True) if depth_service else None
+        )
+
+        df = fut_rows.result()
+        indices = fut_indices.result()
+        concept_ext = [(c, f, fut_ext[(c.id, f)].result()) for c, f in ext_targets["concept"]]
+        industry_ext = [(c, f, fut_ext[(c.id, f)].result()) for c, f in ext_targets["industry"]]
+        up_map = fut_seal_up.result() if fut_seal_up else {}
+        down_map = fut_seal_dn.result() if fut_seal_dn else {}
+
     if df.is_empty():
         rows: list[dict] = []
     else:
@@ -454,12 +545,11 @@ def build_market_overview(
     max_boards = max([int(_finite(r.get("consecutive_limit_ups")) or 0) for r in rows], default=0)
 
     # 五档 sealed 修正: 假涨停/假跌停不计入(需 Pro+ depth5.batch 能力)
+    # (sealed map 已在并行阶段读取)
     sealed_ready = False
     fake_up = 0
     fake_down = 0
     if depth_service:
-        up_map = depth_service.get_sealed_map(as_of, is_down=False)
-        down_map = depth_service.get_sealed_map(as_of, is_down=True)
         sealed_ready = bool(up_map or down_map) and depth_service.is_sealed_ready(as_of)
         if up_map:
             fake_up = sum(1 for v in up_map.values() if v.get("sealed") is False)
@@ -531,8 +621,8 @@ def build_market_overview(
     avg_vol_ratio = sum(vol_ratios) / len(vol_ratios) if vol_ratios else 1
     high_vol_ratio = sum(1 for v in vol_ratios if v >= 1.5)
 
-    concept_rank = _dimension_rank(rows, repo, "concept")
-    industry_rank = _dimension_rank(rows, repo, "industry", level=2)
+    concept_rank = _rank_from_ext_items(rows, concept_ext, "concept")
+    industry_rank = _rank_from_ext_items(rows, industry_ext, "industry", level=2)
 
     strong_diff_pct = (strong_up - strong_down) / total * 100 if total else 0
     high_vol_pct = high_vol_ratio / total * 100 if total else 0

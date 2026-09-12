@@ -25,7 +25,7 @@ export const CARD_META: Record<string, {
 
 export function Pill({ label, value }: { label: string; value: number | string }) {
   return (
-    <div className="rounded-btn bg-base/40 border border-border px-3 py-1.5">
+    <div className="rounded-btn bg-page/40 border border-border px-3 py-1.5">
       <div className="text-[10px] uppercase tracking-wider text-muted">{label}</div>
       <div className="font-mono text-sm font-medium tabular-nums mt-0.5">{value}</div>
     </div>

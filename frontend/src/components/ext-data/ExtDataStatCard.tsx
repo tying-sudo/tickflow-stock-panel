@@ -274,7 +274,7 @@ export function ExtDataStatCard({ config, onDelete, deleting, onEdit }: {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.97, y: 8 }}
               transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-              className="relative w-[90vw] max-w-[380px] rounded-card border border-border bg-base shadow-2xl p-6"
+              className="relative w-[90vw] max-w-[380px] rounded-card border border-border bg-page shadow-2xl p-6"
             >
               <div className="flex items-start gap-3">
                 <div className="shrink-0 h-10 w-10 rounded-full bg-danger/12 flex items-center justify-center">

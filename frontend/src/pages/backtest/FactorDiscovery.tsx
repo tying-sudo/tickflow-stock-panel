@@ -136,7 +136,7 @@ function BatchDiscovery({ onInspect }: { onInspect: (factorName: string) => void
 
   return (
     <div className="grid h-full min-h-0 grid-cols-1 overflow-hidden rounded-card border border-border bg-surface/80 xl:grid-cols-[18rem_minmax(0,1fr)]">
-      <section className="space-y-3 border-b border-border bg-base/25 px-3 py-3 xl:overflow-y-auto xl:border-b-0 xl:border-r">
+      <section className="space-y-3 border-b border-border bg-page/25 px-3 py-3 xl:overflow-y-auto xl:border-b-0 xl:border-r">
         <div className="flex items-center justify-between border-b border-border/70 pb-2">
           <div>
             <div className="text-xs font-semibold text-foreground">筛选配置</div>
@@ -239,7 +239,7 @@ function BatchDiscovery({ onInspect }: { onInspect: (factorName: string) => void
               <DatePicker value={end} onChange={setEnd} min={start || undefined} className="w-full" buttonClassName="w-full justify-start" />
             </div>
           </div>
-          <div className="mt-2 flex rounded-input bg-base/60 p-0.5">
+          <div className="mt-2 flex rounded-input bg-page/60 p-0.5">
             {[3, 6, 12].map(months => (
               <button
                 key={months}
@@ -287,7 +287,7 @@ function BatchDiscovery({ onInspect }: { onInspect: (factorName: string) => void
         </button>
       </section>
 
-      <section className="min-w-0 bg-base/15 xl:overflow-y-auto">
+      <section className="min-w-0 bg-page/15 xl:overflow-y-auto">
         {run.isPending && (
           <div className="m-3 flex items-center gap-3 rounded-btn border border-accent/30 bg-accent/5 px-3 py-2.5 text-xs text-secondary">
             <span className="h-4 w-4 animate-spin rounded-full border-2 border-accent/25 border-t-accent" />

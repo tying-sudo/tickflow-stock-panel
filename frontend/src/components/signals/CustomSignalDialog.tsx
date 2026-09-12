@@ -141,16 +141,16 @@ export function CustomSignalDialog({ open, signal, defaultKind = 'exit', onClose
                     disabled={editing}
                     onChange={e => setDraft(d => ({ ...d, id: e.target.value.replace(/[^a-z0-9_]/g, '') }))}
                     placeholder="如 low_touches_ma5"
-                    className="h-9 w-full rounded-btn border border-border bg-base px-3 text-xs font-mono text-foreground disabled:opacity-60"
+                    className="h-9 w-full rounded-btn border border-border bg-page px-3 text-xs font-mono text-foreground disabled:opacity-60"
                   />
                 </label>
                 <label className="space-y-1.5">
                   <span className="text-[11px] text-muted">信号名称</span>
-                  <input value={draft.name} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))} placeholder="如 跌至MA5" className="h-9 w-full rounded-btn border border-border bg-base px-3 text-xs text-foreground" />
+                  <input value={draft.name} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))} placeholder="如 跌至MA5" className="h-9 w-full rounded-btn border border-border bg-page px-3 text-xs text-foreground" />
                 </label>
                 <label className="space-y-1.5">
                   <span className="text-[11px] text-muted">类型</span>
-                  <select value={draft.kind} onChange={e => setDraft(d => ({ ...d, kind: e.target.value as CustomSignal['kind'] }))} className="h-9 w-full rounded-btn border border-border bg-base px-3 text-xs text-foreground">
+                  <select value={draft.kind} onChange={e => setDraft(d => ({ ...d, kind: e.target.value as CustomSignal['kind'] }))} className="h-9 w-full rounded-btn border border-border bg-page px-3 text-xs text-foreground">
                     <option value="entry">入场</option>
                     <option value="exit">出场</option>
                     <option value="both">出入通用</option>
@@ -173,7 +173,7 @@ export function CustomSignalDialog({ open, signal, defaultKind = 'exit', onClose
                     </button>
                   </div>
                 </div>
-                <div className="space-y-2 rounded-card border border-border/70 bg-base/50 p-3">
+                <div className="space-y-2 rounded-card border border-border/70 bg-page/50 p-3">
                   {draft.conditions.map((c, i) => (
                     <div key={i} className="flex flex-wrap items-center gap-1.5">
                       <span className="text-[10px] text-muted/60 w-5 text-right shrink-0">{i === 0 ? '当' : '且'}</span>
@@ -183,7 +183,7 @@ export function CustomSignalDialog({ open, signal, defaultKind = 'exit', onClose
                       <FieldPicker value={c.left} fields={fields} groups={groups} onChange={v => updateCond(i, { left: v })} />
 
                       {/* 运算符 */}
-                      <select value={c.op} onChange={e => updateCond(i, { op: e.target.value })} className="w-11 h-7 px-0.5 rounded bg-base border border-border text-[11px] font-mono text-foreground text-center focus:outline-none focus:border-accent/50">
+                      <select value={c.op} onChange={e => updateCond(i, { op: e.target.value })} className="w-11 h-7 px-0.5 rounded bg-page border border-border text-[11px] font-mono text-foreground text-center focus:outline-none focus:border-accent/50">
                         {operators.map(op => <option key={op} value={op}>{op}</option>)}
                       </select>
 
@@ -218,7 +218,7 @@ export function CustomSignalDialog({ open, signal, defaultKind = 'exit', onClose
                           onChange={e => setAiDesc(e.target.value)}
                           placeholder="例如：收盘价回踩20日均线，且量比≥2 放量"
                           rows={2}
-                          className="w-full rounded-btn border border-border bg-base px-3 py-2 text-xs text-foreground focus:outline-none focus:border-amber-400/50 resize-none"
+                          className="w-full rounded-btn border border-border bg-page px-3 py-2 text-xs text-foreground focus:outline-none focus:border-amber-400/50 resize-none"
                         />
                         {aiError && <div className="text-xs text-danger">{aiError}</div>}
                         <div className="flex justify-end">
@@ -288,7 +288,7 @@ function FieldPicker({ value, fields, groups, onChange }: {
       <button
         type="button"
         onClick={() => { setQuery(''); setOpen(true) }}
-        className="min-w-[80px] max-w-[180px] h-7 px-1.5 rounded bg-base border border-border text-[11px] text-foreground text-left hover:border-accent/40 transition-colors cursor-pointer truncate"
+        className="min-w-[80px] max-w-[180px] h-7 px-1.5 rounded bg-page border border-border text-[11px] text-foreground text-left hover:border-accent/40 transition-colors cursor-pointer truncate"
       >
         {selectedLabel}
       </button>
@@ -318,7 +318,7 @@ function FieldPicker({ value, fields, groups, onChange }: {
                       <X className="h-3.5 w-3.5" />
                     </button>
                   </div>
-                  <div className="flex items-center gap-2 px-2.5 h-8 rounded-btn bg-base border border-border">
+                  <div className="flex items-center gap-2 px-2.5 h-8 rounded-btn bg-page border border-border">
                     <Search className="h-3.5 w-3.5 text-muted shrink-0" />
                     <input
                       autoFocus
@@ -384,14 +384,14 @@ function DaysInput({ value, max, onChange }: { value: number; max: number; onCha
         type="button"
         onClick={() => onChange(1)}
         title="点击切换为「前N日」(取 N 个交易日前的值)"
-        className="h-7 px-2 rounded bg-base border border-border text-[11px] text-muted hover:text-accent hover:border-accent/50 transition-colors shrink-0 cursor-pointer"
+        className="h-7 px-2 rounded bg-page border border-border text-[11px] text-muted hover:text-accent hover:border-accent/50 transition-colors shrink-0 cursor-pointer"
       >
         最新
       </button>
     )
   }
   return (
-    <div className="flex items-center h-7 rounded bg-base border border-border focus-within:border-accent/50 transition-colors shrink-0">
+    <div className="flex items-center h-7 rounded bg-page border border-border focus-within:border-accent/50 transition-colors shrink-0">
       <span className="pl-1.5 text-[11px] text-muted select-none">前</span>
       <input
         type="number"
@@ -448,7 +448,7 @@ function RightValueInput({ cond, fields, groups, maxDays, onChangeRight, onChang
           {/* 常量无前N日概念, 占位保持与字段模式对齐 */}
           <div className="shrink-0" style={{ width: 44 }} />
           <input type="number" value={numValue} onChange={e => onChangeRight(e.target.value)} step="any"
-            className="flex-1 min-w-0 h-7 px-1.5 rounded bg-base border border-border text-[11px] font-mono text-foreground text-center focus:outline-none focus:border-accent/50" />
+            className="flex-1 min-w-0 h-7 px-1.5 rounded bg-page border border-border text-[11px] font-mono text-foreground text-center focus:outline-none focus:border-accent/50" />
           <button onClick={() => onChangeRight('field:close')} title="切换为字段" className="p-0.5 rounded text-muted hover:text-accent cursor-pointer shrink-0">
             <ArrowRight className="h-3 w-3 -rotate-90" />
           </button>

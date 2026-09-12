@@ -215,6 +215,9 @@ class QuoteService:
         self._index_symbol_count: int = 0
         self._etf_symbol_count: int = 0
         self._index_quotes_cache: pl.DataFrame | None = None
+        self._index_quotes_date: str | None = None  # 缓存对应的北京交易日 (跨日合并守卫)
+        # 指数补充源 (em_index_source, 新浪) 失败冷却截止时刻 (monotonic)
+        self._em_supplement_retry_after: float = 0.0
         self._intraday_signal_evaluator = IntradaySignalEvaluator()
         self._intraday_signal_bucket: dict[str, str] = {}
         # 午休/收盘最终同步状态: 到边界后必须成功拉取一版行情, 再进入休盘态。
@@ -597,6 +600,37 @@ class QuoteService:
             self._fetch_full_market_quotes()
             return self._fetched_at > before
 
+    def _supplement_sourceless_indices(self, records: list[dict]) -> list[dict]:
+        """TDX 无实时行情的指数 → 新浪补充通道 (2026-09-08)。
+
+        97/98 国证新段等 57 只指数在 TDX /quotes 返回垃圾行, 上游不可修;
+        按「指数全集 - 本轮已获取」补拉 (em_index_source, 新浪覆盖 56/57,
+        932000 无源仍走日K兜底)。只补指数缺口 — 股票/ETF 缺口=停牌属正常。
+        失败冷却 300s, 不阻塞主流程。
+        """
+        now = time.monotonic()
+        if now < self._em_supplement_retry_after:
+            return records
+        try:
+            from app.services import em_index_source, preferences
+
+            wanted = set(self._repo.get_index_symbol_set()) if self._repo else set()
+            wanted.update(preferences.get_realtime_index_symbols() or self.CORE_INDEX_SYMBOLS)
+            if not wanted:
+                return records
+            present = {r.get("symbol") for r in records}
+            missing = sorted(wanted - present)
+            if not missing:
+                return records
+            extra = em_index_source.fetch_realtime(missing)
+            if extra:
+                logger.info("指数补充源(腾讯/新浪): %d/%d 只", len(extra), len(missing))
+            return records + extra
+        except Exception as exc:  # noqa: BLE001
+            self._em_supplement_retry_after = now + 300.0
+            logger.warning("指数补充源失败, 冷却 300s: %s", exc)
+            return records
+
     def _custom_full_market_realtime(self, provider_name: str) -> list[dict]:
         """自定义源全市场实时拉取 — 适配两种 get_realtime 契约。
 
@@ -659,6 +693,7 @@ class QuoteService:
                 except Exception as e:  # noqa: BLE001
                     logger.warning("自定义实时行情拉取失败: %s", e)
                     return
+                records = self._supplement_sourceless_indices(records)
                 self._process_full_market_records(records, t0=t0, now_ts=now_ts)
                 return
             # 自定义源未配置 realtime → 回退 TickFlow
@@ -786,7 +821,16 @@ class QuoteService:
             self._symbol_count = len(stock_records)
             self._index_symbol_count = len(index_records)
             self._etf_symbol_count = len(etf_records)
-            self._index_quotes_cache = self._build_index_quotes(index_records)
+            # 轮间合并 (2026-09-08): 上游批次级空包会让当轮快照随机缺指数
+            # (实测单日指数数 119~555 波动, 09-08 收盘残缺轮整包覆盖后被固化
+            # 一晚, 深证成指/创业板指晚间整卡 '--')。与 _flush_live_enriched
+            # 的 merge 语义对齐: 缓存日期=今日时, 本轮缺席的指数保留上一轮值;
+            # 跨日首轮整包替换从零开始, 无旧数据污染。
+            fetch_today = cn_today().isoformat()
+            self._index_quotes_cache = self._merge_index_cache(
+                self._build_index_quotes(index_records), fetch_today
+            )
+            self._index_quotes_date = fetch_today
 
         _persist_last_fetch(fetched_at)
         logger.info("行情刷新: %d 只股票, %d 只ETF, %d 只指数, 耗时 %.0fms", len(stock_records), len(etf_records), len(index_records), fetch_ms)
@@ -887,6 +931,24 @@ class QuoteService:
         result = df.select(select_exprs).with_columns(
             pl.lit(cn_today()).cast(pl.Date).alias("date"),
         )
+        # 980xxx 板块指数的实时 timestamp 是 bar 级北京零点 (非真实成交时刻),
+        # 落盘后分区 max(quote_ts)=00:00 < 收盘线, 完整性扫描永久判"盘中快照" →
+        # 每次重启触发修复管道无限循环 (2026-09-08)。北京零点整不可能是真实
+        # 成交时刻 → 无条件置 null; 盘前写入实为昨日收盘定版态 → 整列置 null
+        # (与 _flush_live_enriched 守卫同语义)。北京零点 epoch ms ≡ 57_600_000 (mod 86_400_000)。
+        if "quote_ts" in result.columns and not result.is_empty():
+            from datetime import time as _dtime
+
+            result = result.with_columns(
+                pl.when(pl.col("quote_ts") % 86_400_000 == 57_600_000)
+                .then(None)
+                .otherwise(pl.col("quote_ts"))
+                .alias("quote_ts")
+            )
+            if cn_now().time() < _dtime(9, 15):
+                result = result.with_columns(
+                    pl.lit(None, dtype=pl.Int64).alias("quote_ts")
+                )
         # 修复: API 在非交易时段可能返回 open/high/low=0 或 null,
         # 导致蜡烛从 0 开始。用 close 填充这些异常值。
         for col in ("open", "high", "low"):
@@ -920,6 +982,31 @@ class QuoteService:
         if "turnover_rate" in out.columns:
             out = out.with_columns((pl.col("turnover_rate").cast(pl.Float64, strict=False) * 100).alias("turnover_rate"))
         return out
+
+    def _merge_index_cache(self, new_cache: pl.DataFrame, today: str) -> pl.DataFrame:
+        """实时指数缓存轮间合并: 本轮缺席的指数保留上一轮值 (仅同日)。
+
+        上游批次级空包 → 每轮快照随机缺指数; 缓存整包覆盖会把残缺名单固化
+        (晚间无新轮次刷新)。规则:
+        - 上一轮缓存存在且日期=今日 → 本轮缺席的 symbol 沿用上一轮行;
+        - 本轮整包为空 (指数批次全败) → 同日保留上一轮整表, 跨日/无旧缓存置空;
+        - 跨日首轮整包替换从零 (旧日收盘价不得混入新交易日);
+        - 合并失败 (schema 漂移等) 回退整包替换, 与旧行为一致。
+        """
+        prev = self._index_quotes_cache
+        prev_ok = prev is not None and not prev.is_empty() and self._index_quotes_date == today
+        if not prev_ok:
+            return new_cache
+        if new_cache.is_empty():
+            return prev
+        try:
+            present = set(new_cache["symbol"].to_list())
+            stale = prev.filter(~pl.col("symbol").is_in(present))
+            if stale.is_empty():
+                return new_cache
+            return pl.concat([new_cache, stale], how="vertical")
+        except Exception:  # noqa: BLE001
+            return new_cache
 
     @staticmethod
     def _build_index_quotes(records: list[dict]) -> pl.DataFrame:

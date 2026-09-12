@@ -121,7 +121,7 @@ export function EditExtDialog({ config, onClose }: { config: ExtDataConfig; onCl
             <input
               value={label}
               onChange={(e) => setLabel(e.target.value)}
-              className="w-full h-8 px-3 rounded-btn bg-base border border-border text-xs text-foreground placeholder:text-muted/40 focus:outline-none focus:border-accent/50"
+              className="w-full h-8 px-3 rounded-btn bg-page border border-border text-xs text-foreground placeholder:text-muted/40 focus:outline-none focus:border-accent/50"
             />
           </div>
 
@@ -131,7 +131,7 @@ export function EditExtDialog({ config, onClose }: { config: ExtDataConfig; onCl
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="可选，简要说明数据的用途"
-              className="w-full h-8 px-3 rounded-btn bg-base border border-border text-xs text-foreground placeholder:text-muted/40 focus:outline-none focus:border-accent/50"
+              className="w-full h-8 px-3 rounded-btn bg-page border border-border text-xs text-foreground placeholder:text-muted/40 focus:outline-none focus:border-accent/50"
             />
           </div>
 
@@ -192,7 +192,7 @@ export function EditExtDialog({ config, onClose }: { config: ExtDataConfig; onCl
                       className={`w-20 h-7 px-2 rounded-btn border text-[11px] text-foreground placeholder:text-muted/40 focus:outline-none focus:border-accent/50 ${
                         isBuiltin
                           ? 'bg-elevated/50 border-border text-muted cursor-not-allowed'
-                          : 'bg-base border-border'
+                          : 'bg-page border-border'
                       }`}
                     />
                     <input
@@ -203,7 +203,7 @@ export function EditExtDialog({ config, onClose }: { config: ExtDataConfig; onCl
                       className={`flex-1 h-7 px-2 rounded-btn border text-[11px] font-mono placeholder:text-muted/40 focus:outline-none focus:border-accent/50 ${
                         isBuiltin
                           ? 'bg-elevated/50 border-border text-muted cursor-not-allowed'
-                          : 'bg-base border-border'
+                          : 'bg-page border-border'
                       }`}
                     />
                     <select
@@ -211,7 +211,7 @@ export function EditExtDialog({ config, onClose }: { config: ExtDataConfig; onCl
                       onChange={(e) => updateField(i, 'dtype', e.target.value)}
                       disabled={isBuiltin}
                       className={`h-7 px-2 rounded-btn border border-border text-[11px] text-foreground ${
-                        isBuiltin ? 'bg-elevated/50 text-muted cursor-not-allowed' : 'bg-base'
+                        isBuiltin ? 'bg-elevated/50 text-muted cursor-not-allowed' : 'bg-page'
                       }`}
                     >
                       <option value="string">文本</option>

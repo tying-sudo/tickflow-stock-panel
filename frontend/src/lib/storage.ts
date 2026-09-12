@@ -56,6 +56,9 @@ export const storage = {
   /** 自选列表分时图显示状态 */
   watchlistIntraday:    kv<boolean>('watchlist_showIntraday'),
 
+  /** 自选列表行内操作按钮可见性 (股票名后的 分组/移除/置顶) — 管理自选分组弹窗开关 */
+  watchlistRowActions:  kv<boolean>('tf-watchlist-row-actions'),
+
   /** 策略结果列表日K蜡烛图显示状态 */
   screenerCandle:       kv<boolean>('screener_showCandle'),
 

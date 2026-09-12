@@ -152,6 +152,38 @@ def sync_daily_batch(symbols: list[str],
     return pl.concat(out, how="diagonal_relaxed")
 
 
+def _split_by_etf(symbols: list[str], repo: KlineRepository) -> tuple[list[str], list[str]]:
+    """按 ETF 维表把符号集分流为 (stocks, etfs)。
+
+    日K批量同步的 universe 含 ETF (daily_pipeline._resolve_universe 刻意合入,
+    供分钟/ETF 阶段共用), 落盘必须按资产分库 — 此前裸 append_daily 把 ETF 行
+    灌进 kline_daily, 重建的 enriched 又带进看板, 涨跌家数/成交额被 ETF 污染
+    (2026-09-08 修复)。与分钟侧 sync_and_persist_minute 的分流对齐。
+    """
+    try:
+        etf_set = repo.get_etf_symbol_set()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("etf symbol set unavailable, all symbols → stock table: %s", e)
+        return list(symbols), []
+    stocks = [s for s in symbols if s not in etf_set]
+    etfs = [s for s in symbols if s in etf_set]
+    return stocks, etfs
+
+
+def _persist_daily_by_asset(df: pl.DataFrame, repo: KlineRepository, etf_set: set[str]) -> int:
+    """按 symbol 判定资产类型, ETF 行写 kline_etf_daily, 其余写 kline_daily。"""
+    if df.is_empty() or "symbol" not in df.columns:
+        return 0
+    is_etf = pl.col("symbol").is_in(list(etf_set)) if etf_set else pl.lit(False)
+    etf_df = df.filter(is_etf)
+    stock_df = df.filter(~is_etf)
+    if not stock_df.is_empty():
+        repo.append_daily(stock_df)
+    if not etf_df.is_empty():
+        repo.append_etf_daily(etf_df)
+    return df.height
+
+
 def sync_and_persist_daily_batch(
     symbols: list[str],
     repo: KlineRepository,
@@ -165,9 +197,12 @@ def sync_and_persist_daily_batch(
 
     start_date/end_date: 外部传入的时间范围(由 pipeline 根据已有数据计算)。
     未传入时默认拉最近 1 年。
+    ETF 符号按维表分流到 kline_etf_daily (universe 混入时不再污染 kline_daily)。
     """
     if not symbols:
         return 0
+
+    stock_syms, etf_syms = _split_by_etf(symbols, repo)
 
     provider_name = preferences.get_daily_data_provider()
     if provider_name != "tickflow":
@@ -177,24 +212,35 @@ def sync_and_persist_daily_batch(
             end_time = end_date or datetime.now()
             days = count or 365
             start_time = start_date or (end_time - timedelta(days=days))
-            df = provider.get_daily(
-                symbols,
-                start_time=start_time,
-                end_time=end_time,
-                on_chunk_done=on_chunk_done,
-            )
-            if df.is_empty():
+            total = 0
+            for asset_type, group in (("stock", stock_syms), ("etf", etf_syms)):
+                if not group:
+                    continue
+                df = provider.get_daily(
+                    group,
+                    start_time=start_time,
+                    end_time=end_time,
+                    asset_type=asset_type,
+                    on_chunk_done=on_chunk_done,
+                )
+                if df.is_empty():
+                    continue
+                total += _persist_daily_by_asset(df, repo, set(etf_syms))
+            if total == 0:
                 return 0
-            repo.append_daily(df)
             try:
                 d = repo.store.data_dir.as_posix()
                 repo.db.execute(
                     f"""CREATE OR REPLACE VIEW kline_daily AS
                         SELECT * FROM read_parquet('{d}/kline_daily/**/*.parquet', union_by_name=true)"""
                 )
+                repo.db.execute(
+                    f"""CREATE OR REPLACE VIEW kline_etf_daily AS
+                        SELECT * FROM read_parquet('{d}/kline_etf_daily/**/*.parquet', union_by_name=true)"""
+                )
             except Exception as e:  # noqa: BLE001
                 logger.warning("refresh view failed: %s", e)
-            return df.height
+            return total
         # 自定义源未配置 daily → 回退 TickFlow
 
     if not capset.has(Cap.KLINE_DAILY_BATCH):
@@ -205,16 +251,24 @@ def sync_and_persist_daily_batch(
     end_time = end_date or datetime.now()
     start_time = start_date or (end_time - timedelta(days=365))
 
-    df = sync_daily_batch(
-        symbols, count=count, batch_size=limit.batch, rpm=limit.rpm,
-        start_time=start_time, end_time=end_time,
-        on_chunk_done=on_chunk_done,
-    )
+    etf_set = set(etf_syms)
+    total = 0
+    # 拉取按资产分组: provider 侧 (easy_tdx / fuyao 等) 依 asset_type 走对应
+    # 接口路由; 落盘侧 ETF 行兜底再过滤一次, 双保险。
+    for asset_type, group in (("stock", stock_syms), ("etf", etf_syms)):
+        if not group:
+            continue
+        df = sync_daily_batch(
+            group, count=count, batch_size=limit.batch, rpm=limit.rpm,
+            start_time=start_time, end_time=end_time,
+            on_chunk_done=on_chunk_done,
+        )
+        if df.is_empty():
+            continue
+        total += _persist_daily_by_asset(df, repo, etf_set)
 
-    if df.is_empty():
+    if total == 0:
         return 0
-
-    repo.append_daily(df)
 
     try:
         d = repo.store.data_dir.as_posix()
@@ -222,10 +276,14 @@ def sync_and_persist_daily_batch(
             f"""CREATE OR REPLACE VIEW kline_daily AS
                 SELECT * FROM read_parquet('{d}/kline_daily/**/*.parquet', union_by_name=true)"""
         )
+        repo.db.execute(
+            f"""CREATE OR REPLACE VIEW kline_etf_daily AS
+                SELECT * FROM read_parquet('{d}/kline_etf_daily/**/*.parquet', union_by_name=true)"""
+        )
     except Exception as e:  # noqa: BLE001
         logger.warning("refresh view failed: %s", e)
 
-    return df.height
+    return total
 
 
 def sync_daily_by_quotes(repo: KlineRepository) -> int:
@@ -336,6 +394,23 @@ def sync_adj_factor(symbols: list[str], repo: KlineRepository,
     """
     if not symbols:
         return 0, []
+
+    # asset_type=stock 时剔除 ETF 符号: 管道侧 universe 混入 ETF (见
+    # _split_by_etf 注释), ETF 除权因子由 index_sync.sync_etf_adj_factor
+    # 专写 adj_factor_etf, 混进股票 adj_factor 表会污染复权视图。
+    if asset_type == "stock":
+        try:
+            etf_set = repo.get_etf_symbol_set()
+        except Exception:  # noqa: BLE001
+            etf_set = set()
+        if etf_set:
+            filtered = [s for s in symbols if s not in etf_set]
+            if len(filtered) != len(symbols):
+                logger.debug("sync_adj_factor: filtered %d etf symbols out of %d",
+                             len(symbols) - len(filtered), len(symbols))
+            symbols = filtered
+            if not symbols:
+                return 0, []
 
     provider_name = preferences.get_adj_factor_provider()
     if provider_name != "tickflow":

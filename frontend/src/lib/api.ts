@@ -1664,6 +1664,8 @@ export interface Preferences {
   realtime_pull_index?: boolean
   realtime_index_mode?: 'core' | 'all'
   realtime_index_symbols?: string[]
+  /** 看板首页指数卡片列表; 空 = 默认四大核心指数 (指数页「添加到看板」维护) */
+  dashboard_index_symbols?: string[]
   pipeline_pull_a_share: boolean
   pipeline_pull_etf: boolean
   pipeline_pull_index: boolean
@@ -1912,6 +1914,11 @@ export const api = {
     request<{ watchlist_groups_in_nav: boolean }>('/api/settings/preferences/watchlist-groups-in-nav', {
       method: 'PUT',
       body: JSON.stringify({ watchlist_groups_in_nav: enabled }),
+    }),
+  updateDashboardIndexSymbols: (symbols: string[]) =>
+    request<{ symbols: string[] }>('/api/settings/preferences/dashboard-index-symbols', {
+      method: 'PUT',
+      body: JSON.stringify({ symbols }),
     }),
   quoteStatus: () =>
     request<{
@@ -2602,6 +2609,7 @@ export const api = {
     ),
 
   dataStatus: () => request<DataStatus>('/api/data/status'),
+  dataAvailableDates: () => request<{ dates: string[] }>('/api/data/available-dates'),
   dataClear: () => request<{ deleted_files: number }>('/api/data/clear', { method: 'POST' }),
   depth5: (symbol: string) =>
     request<Depth5Snapshot>(`/api/intraday/depth5?symbol=${encodeURIComponent(symbol)}`, { quiet: true }),

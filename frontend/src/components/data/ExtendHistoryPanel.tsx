@@ -45,7 +45,7 @@ export function ExtendHistoryPanel({ hasCap, isRunning, earliestDate, onStart }:
             disabled={!hasBatchCap || isRunning}
             className="h-6 w-6 flex items-center justify-center rounded-l-btn bg-elevated border border-border text-secondary hover:bg-border/50 disabled:opacity-30 transition-colors text-xs"
           >−</button>
-          <div className="h-6 w-8 flex items-center justify-center border-y border-border text-[11px] font-mono tabular-nums text-foreground bg-base">
+          <div className="h-6 w-8 flex items-center justify-center border-y border-border text-[11px] font-mono tabular-nums text-foreground bg-page">
             {value}
           </div>
           <button

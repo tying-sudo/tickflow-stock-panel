@@ -416,7 +416,7 @@ function DailyTradeChip({ trade, side, strategyName, onClick, signalNames }: { t
 
   return (
     <button type="button" onClick={onClick} className={`inline-flex ${isBuy ? 'w-[14.5rem]' : 'w-[14.5rem]'} flex-col gap-0.5 rounded-btn border px-1.5 py-1 text-left text-[11px] leading-4 transition-colors hover:border-accent/45 hover:bg-elevated/60 focus:outline-none focus:ring-1 focus:ring-accent/40 ${
-      isBuy ? 'border-accent/25 bg-accent/5' : 'border-border/70 bg-base/45'
+      isBuy ? 'border-accent/25 bg-accent/5' : 'border-border/70 bg-page/45'
     }`}>
       <span className="flex items-center gap-1">
         <span className={`shrink-0 rounded px-1 py-px text-[9px] font-medium ${
@@ -489,7 +489,7 @@ function TradeLegCell({ trade, side, signalNames }: { trade: StrategyBacktestTra
   const signalDateLabel = isBuy || trade.exit_reason === 'signal' ? '信号' : '触发'
 
   return (
-    <div className="min-w-[8.25rem] rounded-btn border border-border/60 bg-base/35 px-2 py-1 text-xs leading-4">
+    <div className="min-w-[8.25rem] rounded-btn border border-border/60 bg-page/35 px-2 py-1 text-xs leading-4">
       <div className="flex items-center justify-between gap-2">
         <span className="font-mono text-secondary">
           成交 {date}
@@ -832,7 +832,7 @@ function StockPoolPicker({ value, onChange, assetType = 'stock' }: { value: stri
             className="w-full rounded-input border border-border bg-surface py-1.5 pl-8 pr-2.5 text-xs focus:border-accent focus:outline-none"
           />
           {open && results.length > 0 && (
-            <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-56 overflow-y-auto rounded-card border border-border bg-base shadow-xl">
+            <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-56 overflow-y-auto rounded-card border border-border bg-page shadow-xl">
               {results.map(r => {
                 const added = symbols.includes(r.symbol)
                 return (
@@ -1524,7 +1524,7 @@ export function StrategyBacktest({ loadCandidate, onLoadConsumed }: {
   return (
     <div className="h-full min-h-0 overflow-hidden rounded-card border border-border bg-surface/80 grid grid-cols-1 xl:grid-cols-[18rem_minmax(0,1fr)]">
       {/* 配置面板 */}
-      <section className="space-y-3 border-b xl:border-b-0 xl:border-r border-border bg-base/25 px-3 py-3 xl:overflow-y-auto">
+      <section className="space-y-3 border-b xl:border-b-0 xl:border-r border-border bg-page/25 px-3 py-3 xl:overflow-y-auto">
         <div>
           <div className="flex items-center justify-between mb-1.5">
             <label className="text-xs font-medium text-secondary">选择策略</label>
@@ -1585,7 +1585,7 @@ export function StrategyBacktest({ loadCandidate, onLoadConsumed }: {
             </div>
           )}
           <div className="overflow-hidden rounded-input border border-border bg-surface">
-            <div className="flex border-b border-border/60 bg-base/30 p-0.5">
+            <div className="flex border-b border-border/60 bg-page/30 p-0.5">
               {STRATEGY_GROUPS.map(group => (
                 <button
                   key={group.id}
@@ -1614,7 +1614,7 @@ export function StrategyBacktest({ loadCandidate, onLoadConsumed }: {
                 className={`px-2 py-1 rounded-btn text-[11px] border transition-all duration-150 ease-smooth cursor-pointer
                   ${selectedStrategy === st.id
                     ? 'border-accent/50 bg-accent/10 text-accent shadow-[0_0_10px_rgba(59,130,246,0.1)]'
-                    : 'border-border bg-base text-secondary hover:border-accent/40'
+                    : 'border-border bg-page text-secondary hover:border-accent/40'
                   }`}
               >
                 <span className="font-medium">{st.name}</span>
@@ -1696,7 +1696,7 @@ export function StrategyBacktest({ loadCandidate, onLoadConsumed }: {
           </div>
 
           <div className="mt-2 flex items-center gap-1">
-            <div className="flex min-w-0 flex-1 rounded-input bg-base/60 p-0.5">
+            <div className="flex min-w-0 flex-1 rounded-input bg-page/60 p-0.5">
               {visibleQuickRanges.map(range => (
                 <button
                   key={range.id}
@@ -1715,7 +1715,7 @@ export function StrategyBacktest({ loadCandidate, onLoadConsumed }: {
               aria-label="设置快捷区间"
               className={`shrink-0 rounded-btn border px-2 py-1.5 transition-colors ${rangeSettingsOpen
                 ? 'border-accent/40 bg-accent/10 text-accent'
-                : 'border-border bg-base text-secondary hover:border-accent/40 hover:text-accent'
+                : 'border-border bg-page text-secondary hover:border-accent/40 hover:text-accent'
               }`}
             >
               <SlidersHorizontal className="h-3.5 w-3.5" />
@@ -1723,7 +1723,7 @@ export function StrategyBacktest({ loadCandidate, onLoadConsumed }: {
           </div>
 
           {rangeSettingsOpen && (
-            <div className="mt-2 rounded-input border border-border/60 bg-base/50 p-2">
+            <div className="mt-2 rounded-input border border-border/60 bg-page/50 p-2">
               <div className="mb-1.5 flex items-center justify-between gap-2 text-[10px] text-muted">
                 <span>快捷区间</span>
                 <span>月 1-120 / 年 1-10</span>
@@ -1909,7 +1909,7 @@ export function StrategyBacktest({ loadCandidate, onLoadConsumed }: {
       </section>
 
       {/* 结果面板 */}
-      <section className="min-w-0 space-y-3 bg-base/15 px-3 py-3 xl:overflow-y-auto">
+      <section className="min-w-0 space-y-3 bg-page/15 px-3 py-3 xl:overflow-y-auto">
         {/* 模式切换: 仓位模拟 / 全量模拟 */}
         <div className="flex items-center justify-between gap-2">
           <div className="inline-flex rounded-btn border border-border bg-surface/80 p-0.5 shadow-sm">
@@ -1980,7 +1980,7 @@ export function StrategyBacktest({ loadCandidate, onLoadConsumed }: {
               <span className="text-[10px] text-muted">最低分</span>
               <input type="number" min={0} max={100} value={regimeMinScore} placeholder="不限"
                 onChange={e => setRegimeMinScore(e.target.value ? Number(e.target.value) : '')}
-                className="w-14 h-6 px-1 rounded border border-border bg-base text-[11px] text-foreground text-center focus:outline-none focus:border-accent/50" />
+                className="w-14 h-6 px-1 rounded border border-border bg-page text-[11px] text-foreground text-center focus:outline-none focus:border-accent/50" />
             </div>
           </div>
           <div className="flex flex-wrap gap-1">
@@ -2067,7 +2067,7 @@ export function StrategyBacktest({ loadCandidate, onLoadConsumed }: {
               </button>
             </div>
             {backtestTask?.progress && (
-              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-base/60">
+              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-page/60">
                 <div
                   className="h-full rounded-full bg-accent transition-all duration-300 ease-out"
                   style={{ width: `${(backtestTask.progress.day / backtestTask.progress.total) * 100}%` }}
@@ -2099,7 +2099,7 @@ export function StrategyBacktest({ loadCandidate, onLoadConsumed }: {
                 type="button"
                 onClick={exportResultCsv}
                 title="导出回测结果 CSV (概要 + 净值曲线 + 交易明细 + 分标的统计)"
-                className="ml-1 inline-flex h-6 shrink-0 items-center gap-1 rounded border border-border bg-base px-2 text-[10px] text-secondary transition-colors hover:border-accent/40 hover:text-accent"
+                className="ml-1 inline-flex h-6 shrink-0 items-center gap-1 rounded border border-border bg-page px-2 text-[10px] text-secondary transition-colors hover:border-accent/40 hover:text-accent"
               >
                 <Download className="h-3 w-3" />
                 导出
@@ -2224,7 +2224,7 @@ export function StrategyBacktest({ loadCandidate, onLoadConsumed }: {
                   type="button"
                   onClick={exportResultCsv}
                   title="导出回测结果 CSV (概要 + 净值曲线 + 交易明细 + 分标的统计)"
-                  className="ml-1 inline-flex h-6 shrink-0 items-center gap-1 rounded border border-border bg-base px-2 text-[10px] text-secondary transition-colors hover:border-accent/40 hover:text-accent"
+                  className="ml-1 inline-flex h-6 shrink-0 items-center gap-1 rounded border border-border bg-page px-2 text-[10px] text-secondary transition-colors hover:border-accent/40 hover:text-accent"
                 >
                   <Download className="h-3 w-3" />
                   导出
@@ -2262,7 +2262,7 @@ export function StrategyBacktest({ loadCandidate, onLoadConsumed }: {
             </div>
 
             {selectionStages.length > 0 && (
-              <div className="flex flex-wrap items-center gap-y-2 rounded-card border border-border bg-base/35 px-3 py-2 text-[11px] text-secondary">
+              <div className="flex flex-wrap items-center gap-y-2 rounded-card border border-border bg-page/35 px-3 py-2 text-[11px] text-secondary">
                 <span className="mr-2 font-medium text-foreground">选择漏斗</span>
                 {selectionStages.map((stage, index) => (
                   <div key={stage.key} className="flex items-center">
@@ -2566,7 +2566,7 @@ export function StrategyBacktest({ loadCandidate, onLoadConsumed }: {
             initial={{ x: 32, opacity: 0 }}
             animate={{ x: 0, opacity: 1 }}
             transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-            className="fixed inset-y-0 right-0 z-[60] flex w-full max-w-3xl flex-col border-l border-border bg-base shadow-2xl"
+            className="fixed inset-y-0 right-0 z-[60] flex w-full max-w-3xl flex-col border-l border-border bg-page shadow-2xl"
           >
             <div className="border-b border-border px-4 py-3">
               <div className="flex items-start gap-3">
@@ -2703,7 +2703,7 @@ export function StrategyBacktest({ loadCandidate, onLoadConsumed }: {
                           key={board}
                           type="button"
                           onClick={() => updateBasicFilter('boards', checked ? boards.filter((b: string) => b !== board) : [...boards, board])}
-                          className={`rounded-btn border px-2.5 py-1.5 text-[11px] transition-colors ${checked ? 'border-accent/50 bg-accent/10 text-accent' : 'border-border bg-base text-muted hover:border-accent/40'}`}
+                          className={`rounded-btn border px-2.5 py-1.5 text-[11px] transition-colors ${checked ? 'border-accent/50 bg-accent/10 text-accent' : 'border-border bg-page text-muted hover:border-accent/40'}`}
                         >
                           {board}
                         </button>

@@ -998,7 +998,7 @@ export function Data() {
         {openSettings === 'funds' && (
           <SettingsModal title="基金 · 手动同步" onClose={() => setOpenSettings(null)}>
             <div className="space-y-3">
-              <div className="rounded-card border border-border bg-base/30 p-4 space-y-3">
+              <div className="rounded-card border border-border bg-page/30 p-4 space-y-3">
                 <div>
                   <div className="text-sm font-medium text-foreground">场外基金净值快照</div>
                   <div className="text-[11px] text-muted mt-1 leading-relaxed">
@@ -1115,7 +1115,7 @@ export function Data() {
         {openSettings === 'index' && (
           <SettingsModal title="指数 · 手动获取" onClose={() => setOpenSettings(null)}>
             <div className="space-y-4">
-              <div className="rounded-card border border-border bg-base/30 p-4 space-y-3">
+              <div className="rounded-card border border-border bg-page/30 p-4 space-y-3">
                 <div>
                   <div className="text-sm font-medium text-foreground">指数日 K</div>
                   <div className="text-[11px] text-muted mt-1">获取数据时会先刷新 CN_Index 维表，再向前扩展指数历史；指数不需要复权。</div>
@@ -1127,7 +1127,7 @@ export function Data() {
                       disabled={!hasDailyBatchCap || !!activeJobId || syncIndexDaily.isPending}
                       className="h-6 w-6 flex items-center justify-center rounded-l-btn bg-elevated border border-border text-secondary hover:bg-border/50 disabled:opacity-30 transition-colors text-xs"
                     >−</button>
-                    <div className="h-6 w-8 flex items-center justify-center border-y border-border text-[11px] font-mono tabular-nums text-foreground bg-base">
+                    <div className="h-6 w-8 flex items-center justify-center border-y border-border text-[11px] font-mono tabular-nums text-foreground bg-page">
                       {indexExtendValue}
                     </div>
                     <button
@@ -1156,7 +1156,7 @@ export function Data() {
                   {indexEarliestDate && <span> (当前最早: <span className="font-mono text-secondary">{indexEarliestDate}</span>)</span>}
                 </div>
 
-                <div className="rounded-btn border border-border bg-base/40 p-3 space-y-2">
+                <div className="rounded-btn border border-border bg-page/40 p-3 space-y-2">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <div className="text-xs font-medium text-foreground">批次大小</div>
@@ -1237,7 +1237,7 @@ export function Data() {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.97, y: 8 }}
               transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-              className="relative w-[90vw] max-w-[420px] rounded-card border border-border bg-base shadow-2xl p-6"
+              className="relative w-[90vw] max-w-[420px] rounded-card border border-border bg-page shadow-2xl p-6"
             >
               <div className="flex items-start gap-3">
                 <div className="shrink-0 h-10 w-10 rounded-full bg-danger/12 flex items-center justify-center">

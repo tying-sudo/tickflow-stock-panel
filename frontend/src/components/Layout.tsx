@@ -48,6 +48,7 @@ import {
   ChevronDown,
   Sun,
   Moon,
+  Menu,
   X,
   WifiOff,
   PanelLeftClose,
@@ -60,6 +61,7 @@ import { resolveWatchlistGroupColor } from '@/lib/watchlist-group-colors'
 import { computeGroupPcts, groupPctColor, groupPctTitle } from '@/lib/watchlistGroupStats'
 import { fmtPct } from '@/lib/format'
 import { toggleTheme, useTheme } from '@/lib/theme'
+import { useIsMobile } from '@/lib/useIsMobile'
 import { setCurrentTotal as setAlertTotal, useUnreadAlerts } from '@/lib/monitorBadge'
 import { ExtensionSlot } from '@/extensions/ExtensionSlot'
 import { getFrontendExtensionNavigation } from '@/extensions/registry'
@@ -146,24 +148,27 @@ function MonitorBadge({ active }: { active: boolean }) {
 function SidebarIndexQuotes({ rows, items }: { rows: IndexQuote[] | undefined; items: CoreIndex[] }) {
   if (items.length === 0) return null
   const quoteBySymbol = new Map((rows ?? []).map(q => [q.symbol, q]))
+  // 日K兜底行 (实时缺席): 非当日数据弱化 + tooltip 注明数据日期
+  const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Shanghai' })
   return (
     <div className="mt-2 grid grid-cols-2 gap-1.5 border-t border-border/60 pt-2">
       {items.map(item => {
         const q = quoteBySymbol.get(item.symbol)
         const value = q?.last_price ?? q?.close
         const pct = q?.change_pct
+        const stale = !!q?.date && q.date !== today
         return (
           <NavLink
             key={item.symbol}
             to={`/indices?symbol=${encodeURIComponent(item.symbol)}`}
             className="block rounded bg-elevated/60 px-2 py-1.5 transition-colors hover:bg-elevated"
-            title={`${item.name} ${item.symbol}`}
+            title={`${item.name} ${item.symbol}${stale && q?.date ? ` · 数据截至 ${q.date} 收盘` : ''}`}
           >
             <div className="flex items-center justify-between gap-1">
               <span className="text-[10px] text-secondary">{item.name}</span>
-              <span className={`text-[10px] font-mono ${indexPctClass(pct)}`}>{fmtIndexPct(pct)}</span>
+              <span className={`text-[10px] font-mono ${stale ? 'opacity-60' : ''} ${indexPctClass(pct)}`}>{fmtIndexPct(pct)}</span>
             </div>
-            <div className={`mt-0.5 truncate font-mono text-[10px] ${indexPctClass(pct)}`}>
+            <div className={`mt-0.5 truncate font-mono text-[10px] ${stale ? 'opacity-60' : ''} ${indexPctClass(pct)}`}>
               {fmtIndexValue(value)}
             </div>
           </NavLink>
@@ -367,11 +372,16 @@ export function Layout() {
   // 自选二级菜单展开状态 — 默认当前在自选页时展开
   const [watchlistNavExpanded, setWatchlistNavExpanded] = useState(location.pathname === '/watchlist')
 
-  // 侧边栏收起状态 — 持久化到 localStorage
+  // 侧边栏收起状态 — 持久化到 localStorage (仅桌面形态使用;
+  // 移动端导航走抽屉, 侧栏以展开形态渲染保证标签完整)
   const [navCollapsed, setNavCollapsed] = useState(() => {
-    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches) return true
+    if (typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches) return false
     try { return localStorage.getItem('tf-nav-collapsed') === '1' } catch { return false }
   })
+
+  // ===== 移动端壳 (<768px): 侧栏收纳为左上角悬浮按钮 + 抽屉, 主内容全幅 =====
+  const isMobile = useIsMobile()
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
 
   // 分组等权平均涨跌幅 — 复用 watchlist/enriched 查询缓存(与自选页同 key,
   // 盘中随 SSE 刷新)。可见性门控: 子菜单实际可见(侧栏展开 + 二级菜单展开)
@@ -431,7 +441,9 @@ export function Layout() {
     const compact = window.matchMedia('(max-width: 767px)')
     const syncSidebarWithViewport = (event: MediaQueryListEvent | MediaQueryList) => {
       if (event.matches) {
-        setNavCollapsed(true)
+        // 移动端: 导航在抽屉中以展开形态渲染, 收起态无意义; 抽屉复位
+        setNavCollapsed(false)
+        setMobileNavOpen(false)
         return
       }
       try { setNavCollapsed(localStorage.getItem('tf-nav-collapsed') === '1') } catch {}
@@ -440,6 +452,21 @@ export function Layout() {
     compact.addEventListener('change', syncSidebarWithViewport)
     return () => compact.removeEventListener('change', syncSidebarWithViewport)
   }, [])
+
+  // 抽屉随路由切换自动关闭 (移动端点菜单项后回到全幅内容)
+  useEffect(() => {
+    setMobileNavOpen(false)
+  }, [location.pathname])
+
+  // Escape 关闭抽屉
+  useEffect(() => {
+    if (!isMobile) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMobileNavOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [isMobile])
   const toggleNavCollapsed = () => {
     setNavCollapsed(prev => {
       const next = !prev
@@ -587,10 +614,25 @@ export function Layout() {
 
   return (
     <div
-      className="h-screen grid bg-base text-foreground overflow-hidden transition-[grid-template-columns] duration-200 ease-smooth"
-      style={{ gridTemplateColumns: navCollapsed ? '3.5rem 1fr' : '14rem 1fr' }}
+      className={cn(
+        'h-screen bg-page text-foreground overflow-hidden',
+        isMobile ? 'flex flex-col' : 'grid transition-[grid-template-columns] duration-200 ease-smooth',
+      )}
+      style={isMobile ? undefined : { gridTemplateColumns: navCollapsed ? '3.5rem 1fr' : '14rem 1fr' }}
     >
-      <aside className="border-r border-border bg-surface flex flex-col h-full min-h-0 overflow-hidden">
+      <aside
+        className={cn(
+          'bg-surface flex flex-col min-h-0 overflow-hidden',
+          isMobile
+            ? cn(
+                'fixed inset-y-0 left-0 z-50 w-64 max-w-[85vw] border-r border-border shadow-2xl',
+                'transition-transform duration-200 ease-smooth',
+                mobileNavOpen ? 'translate-x-0' : '-translate-x-full',
+              )
+            : 'h-full border-r border-border',
+        )}
+        aria-hidden={isMobile ? !mobileNavOpen : undefined}
+      >
         <div className={cn('border-b border-border shrink-0', navCollapsed ? 'px-2 pt-3 pb-2' : 'px-4 pt-4 pb-3')}>
           {/* Brand block — 收起时只显 logo 居中 */}
           <div className={cn('flex', navCollapsed ? 'flex-col items-center gap-2' : 'items-center gap-2')}>
@@ -607,7 +649,8 @@ export function Layout() {
                 Tick Stock Panel
               </div>
             )}
-            {/* 收起/展开 按钮 */}
+            {/* 收起/展开 按钮 — 桌面形态专属 (移动端抽屉内收起无意义) */}
+            {!isMobile && (
             <button
               onClick={toggleNavCollapsed}
               className={cn(
@@ -621,6 +664,7 @@ export function Layout() {
                 : <PanelLeftClose className="h-3.5 w-3.5 shrink-0" />
               }
             </button>
+            )}
           </div>
 
             {/* 状态卡 — 收起时隐藏 */}
@@ -923,11 +967,50 @@ export function Layout() {
         </div>
       </aside>
 
+      {/* 移动端顶栏 — 置顶不悬浮: 菜单按钮(左) + 项目标题 + 主题切换(右)。
+          flex 列首子项, 主内容在下方全幅; 桌面不渲染。 */}
+      {isMobile && (
+        <header className="flex shrink-0 items-center gap-1 border-b border-border bg-surface px-2 py-1.5">
+          <button
+            onClick={() => setMobileNavOpen(true)}
+            className="flex items-center justify-center rounded-btn p-2 text-foreground/80 transition-colors duration-150 ease-smooth hover:bg-elevated hover:text-foreground"
+            aria-label="打开菜单"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+          <div className="flex min-w-0 items-center gap-2">
+            <Logo
+              size={20}
+              className="shrink-0 drop-shadow-[0_0_8px_rgba(139,92,246,0.4)]"
+              style={{ color: BRAND }}
+            />
+            <span
+              className="truncate font-bold text-[11px] uppercase tracking-[0.14em] text-foreground whitespace-nowrap"
+              style={{ textShadow: `0 0 10px ${BRAND}44` }}
+            >
+              Tick Stock Panel
+            </span>
+          </div>
+          <div className="ml-auto flex shrink-0 items-center">
+            <ThemeToggle />
+          </div>
+        </header>
+      )}
+
+      {/* 移动端: 抽屉遮罩 (点击关闭; 另有 Escape / 路由切换自动关闭) */}
+      {isMobile && mobileNavOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50"
+          onClick={() => setMobileNavOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
       <motion.main
         initial={{ opacity: 0, y: 8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-        className="h-full overflow-auto scrollbar-gutter-stable"
+        className={cn('overflow-auto scrollbar-gutter-stable', isMobile ? 'flex-1 min-w-0' : 'h-full')}
       >
         {streamStatus === 'reconnecting' && (
           <div

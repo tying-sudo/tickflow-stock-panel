@@ -171,7 +171,8 @@ export function StockPanel({
       />
 
       {infoBarOnly ? null : (
-      <div className={rightPanel ? 'grid grid-cols-[1fr_1fr_16rem] gap-3 items-start' : 'grid grid-cols-2 gap-3 items-start'}>
+      /* 移动端单列堆叠 (max-sm:grid-cols-1); 桌面列结构与原版一致 */
+      <div className={`grid gap-3 items-start max-sm:grid-cols-1 ${rightPanel ? 'sm:grid-cols-[1fr_1fr_16rem]' : 'sm:grid-cols-2'}`}>
         <StockDailyKChart
           symbol={symbol}
           height={height}
@@ -192,7 +193,7 @@ export function StockPanel({
         />
 
         {showIntraday && selectedDate && !intradayDismissed ? (
-          <div className="relative flex min-w-0 flex-col border-l border-border pl-3">
+          <div className="relative flex min-w-0 flex-col border-l border-border pl-3 max-sm:border-l-0 max-sm:pl-0">
             <button
               onClick={() => setIntradayDismissed(true)}
               className="absolute -left-1.5 -top-1.5 z-10 flex h-5 w-5 items-center justify-center rounded-full border border-border bg-surface text-muted shadow-sm transition-colors hover:text-foreground hover:bg-elevated"

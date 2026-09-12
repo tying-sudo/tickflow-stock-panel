@@ -69,14 +69,14 @@ export function Auth() {
 
   if (!status) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-base">
+      <div className="flex min-h-screen items-center justify-center bg-page">
         <Loader2 className="h-6 w-6 animate-spin text-muted" />
       </div>
     )
   }
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-base px-4">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-page px-4">
       {/* 背景辉光(与 Onboarding 风格一致) */}
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,rgba(139,92,246,0.15),transparent_40%),radial-gradient(circle_at_70%_80%,rgba(59,130,246,0.12),transparent_40%)]" />
 
@@ -120,7 +120,7 @@ export function Auth() {
                 onChange={e => setPassword(e.target.value)}
                 placeholder="访问密码"
                 autoFocus
-                className="h-10 w-full rounded-btn border border-border bg-base px-3 pr-9 text-sm text-foreground outline-none transition-colors focus:border-accent/50"
+                className="h-10 w-full rounded-btn border border-border bg-page px-3 pr-9 text-sm text-foreground outline-none transition-colors focus:border-accent/50"
               />
               <button
                 type="button"
@@ -139,7 +139,7 @@ export function Auth() {
                 value={confirmPassword}
                 onChange={e => setConfirmPassword(e.target.value)}
                 placeholder="再次输入密码"
-                className="h-10 w-full rounded-btn border border-border bg-base px-3 text-sm text-foreground outline-none transition-colors focus:border-accent/50"
+                className="h-10 w-full rounded-btn border border-border bg-page px-3 text-sm text-foreground outline-none transition-colors focus:border-accent/50"
               />
             )}
 

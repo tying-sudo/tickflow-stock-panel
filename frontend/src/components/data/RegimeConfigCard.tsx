@@ -73,14 +73,14 @@ export function RegimeConfigCard() {
     <div className="space-y-3">
       {/* 盘后自动计算开关 */}
       <label className={`flex items-start gap-2.5 rounded-card border px-3 py-2.5 transition-colors cursor-pointer ${
-        on ? 'border-accent/40 bg-accent/[0.05]' : 'border-border bg-base/30 hover:border-border/70'
+        on ? 'border-accent/40 bg-accent/[0.05]' : 'border-border bg-page/30 hover:border-border/70'
       }`}>
         <button
           type="button"
           onClick={() => updateEnabled.mutate(!on)}
           disabled={updateEnabled.isPending}
           className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
-            on ? 'bg-accent border-accent' : 'bg-base border-border'
+            on ? 'bg-accent border-accent' : 'bg-page border-border'
           }`}
           role="checkbox"
           aria-checked={on}
@@ -99,7 +99,7 @@ export function RegimeConfigCard() {
       </label>
 
       {/* 分批参数 */}
-      <div className="rounded-card border border-border bg-base/30 px-3 py-2.5">
+      <div className="rounded-card border border-border bg-page/30 px-3 py-2.5">
         <div className="flex items-center gap-1.5">
           <Layers className="h-3.5 w-3.5 text-accent" />
           <span className="text-xs font-medium text-foreground">全量回填分批参数</span>
@@ -120,7 +120,7 @@ export function RegimeConfigCard() {
               onBlur={saveBatch}
               onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
               disabled={updateParams.isPending}
-              className="mt-1 h-7 w-full rounded-input border border-border bg-base px-2 text-xs text-foreground outline-none focus:border-accent disabled:opacity-50"
+              className="mt-1 h-7 w-full rounded-input border border-border bg-page px-2 text-xs text-foreground outline-none focus:border-accent disabled:opacity-50"
             />
             <div className="mt-0.5 text-[9px] text-muted">范围 25 ~ 500 · 默认 60</div>
           </div>
@@ -135,7 +135,7 @@ export function RegimeConfigCard() {
               onBlur={saveWarmup}
               onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
               disabled={updateParams.isPending}
-              className="mt-1 h-7 w-full rounded-input border border-border bg-base px-2 text-xs text-foreground outline-none focus:border-accent disabled:opacity-50"
+              className="mt-1 h-7 w-full rounded-input border border-border bg-page px-2 text-xs text-foreground outline-none focus:border-accent disabled:opacity-50"
             />
             <div className="mt-0.5 text-[9px] text-muted">范围 35 ~ 90 · 默认 40</div>
           </div>
@@ -156,7 +156,7 @@ export function RegimeConfigCard() {
               className={`h-5 rounded-btn border px-2 text-[10px] transition-colors disabled:opacity-50 ${
                 batchDays === p.batch
                   ? 'border-accent/40 bg-accent/10 text-accent'
-                  : 'border-border bg-base text-secondary hover:text-accent hover:border-accent/40'
+                  : 'border-border bg-page text-secondary hover:text-accent hover:border-accent/40'
               }`}
             >
               {p.label} {p.batch}天

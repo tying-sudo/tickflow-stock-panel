@@ -27,18 +27,21 @@ def _get_quote_service(request: Request):
     return getattr(request.app.state, "quote_service", None)
 
 
-def _fallback_index_quotes_from_daily(request: Request, symbols: list[str] | None = None) -> list[dict]:
-    """实时指数缓存为空时，从本地指数日 K 取最近收盘价作为兜底。"""
+def _fallback_index_quotes_from_daily(
+    request: Request, symbols: list[str] | None = None, lookback_days: int = 30,
+) -> list[dict]:
+    """从本地指数日 K 取每只指数最近收盘价兜底 (实时缺失 symbol 级回退)。"""
     repo = getattr(request.app.state, "repo", None)
     if not repo:
         return []
 
     params: list[str] = []
-    symbol_filter = ""
+    filters = [f"date >= current_date - INTERVAL {int(lookback_days)} DAY"]
     if symbols:
         placeholders = ", ".join("?" for _ in symbols)
-        symbol_filter = f"WHERE symbol IN ({placeholders})"
+        filters.append(f"symbol IN ({placeholders})")
         params.extend(symbols)
+    symbol_filter = f"WHERE {' AND '.join(filters)}"
 
     try:
         rows = repo.execute_all(
@@ -102,7 +105,12 @@ def index_quotes(
     request: Request,
     symbols: str | None = Query(None, description="逗号分隔的指数 symbol 列表"),
 ):
-    """返回实时指数行情缓存，不触发 TickFlow 请求。"""
+    """返回实时指数行情缓存 + 缺席 symbol 的日K兜底，不触发 TickFlow 请求。
+
+    实时缓存每轮整包替换，上游批次级空包会让个别指数 (曾见深证成指/创业板指)
+    在缓存中缺席；97/98 开头国证新指数 TDX 无实时源。两类缺口都按 symbol
+    用 kline_index_daily 最近收盘补齐 (行带 date，前端对非当日行弱化展示)。
+    """
     symbol_list = [s.strip() for s in symbols.split(",") if s.strip()] if symbols else None
     qs = _get_quote_service(request)
     if not qs:
@@ -113,6 +121,15 @@ def index_quotes(
     if not rows:
         rows = _fallback_index_quotes_from_daily(request, symbol_list)
         return {"rows": rows, "count": len(rows), "source": "index_daily"}
+    cached = {r.get("symbol") for r in rows}
+    if symbol_list:
+        missing = [s for s in symbol_list if s not in cached]
+    else:
+        repo = getattr(request.app.state, "repo", None)
+        universe = repo.get_index_symbol_set() if repo else set()
+        missing = sorted(universe - cached)
+    if missing:
+        rows.extend(_fallback_index_quotes_from_daily(request, missing))
     return {"rows": rows, "count": len(rows), "source": "realtime"}
 
 

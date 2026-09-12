@@ -728,7 +728,7 @@ export function ListColumnCustomizer({
           <motion.div
             initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }}
             transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
-            className="relative w-[360px] max-w-[90vw] h-full bg-base border-l border-border shadow-2xl flex flex-col"
+            className="relative w-[360px] max-w-[90vw] h-full bg-page border-l border-border shadow-2xl flex flex-col"
           >
             <div className="flex items-center justify-between px-4 py-3 border-b border-border">
               <h3 className="text-sm font-medium text-foreground">{title}</h3>

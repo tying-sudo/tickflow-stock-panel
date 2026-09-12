@@ -54,11 +54,11 @@ export function Backtest() {
   }
 
   return (
-    <div className="flex min-h-full flex-col bg-base">
+    <div className="flex min-h-full flex-col bg-page">
       <PageHeader
         title="回测"
         subtitle={<span className="hidden md:inline">{MODES[activeTab].subtitle}</span>}
-        className="shrink-0 flex-wrap gap-x-4 gap-y-2 bg-base/95 px-3 lg:flex-nowrap lg:px-5"
+        className="shrink-0 flex-wrap gap-x-4 gap-y-2 bg-page/95 px-3 lg:flex-nowrap lg:px-5"
         right={(
           <div className="flex w-full min-w-0 items-center gap-1.5 sm:gap-2 lg:w-auto">
             <button

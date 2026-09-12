@@ -85,7 +85,7 @@ export function AbnormalMoves() {
           right={
             <Link
               to="/monitor"
-              className="inline-flex h-7 items-center gap-1 rounded border border-border bg-base px-2 text-[11px] text-secondary transition-colors hover:text-foreground"
+              className="inline-flex h-7 items-center gap-1 rounded border border-border bg-page px-2 text-[11px] text-secondary transition-colors hover:text-foreground"
               title="在监控中心创建「异动监控」规则: 后台持续评估, 触发时统一走触发记录/站内通知/飞书·企微推送, 无需保持本页打开"
             >
               <Settings2 className="h-3 w-3" />
@@ -97,7 +97,7 @@ export function AbnormalMoves() {
 
       {/* tab 条: 交易时间线 竞价(盘前) → 盘中 → 偏移(多日) */}
       <div className="flex shrink-0 flex-wrap items-center gap-3 px-5 pt-3">
-        <div className="inline-flex items-center gap-0.5 rounded-full border border-border/50 bg-base/70 p-0.5">
+        <div className="inline-flex items-center gap-0.5 rounded-full border border-border/50 bg-page/70 p-0.5">
           {TAB_META.map(t => {
             const Icon = t.icon
             const active = tab === t.key
@@ -334,7 +334,7 @@ function BenchmarkCard({ q, onOpenStock }: {
                     </span>
                   )}
                   {(i.tags ?? []).slice(0, 2).map(t => (
-                    <span key={t} className="max-w-24 truncate rounded-full bg-base/70 px-1.5 py-px text-[9px] text-muted" title={t}>
+                    <span key={t} className="max-w-24 truncate rounded-full bg-page/70 px-1.5 py-px text-[9px] text-muted" title={t}>
                       {t}
                     </span>
                   ))}
@@ -426,7 +426,7 @@ function IntradayView({ onPreview }: {
           <button
             type="button"
             onClick={() => q.refetch()}
-            className="inline-flex h-7 items-center gap-1 rounded border border-border bg-base px-2 text-[11px] text-secondary transition-colors hover:text-foreground"
+            className="inline-flex h-7 items-center gap-1 rounded border border-border bg-page px-2 text-[11px] text-secondary transition-colors hover:text-foreground"
             title="立即刷新"
           >
             <RefreshCw className={`h-3 w-3 ${q.isFetching ? 'animate-spin' : ''}`} />
@@ -442,7 +442,7 @@ function IntradayView({ onPreview }: {
               value={query}
               onChange={e => setQuery(e.target.value)}
               placeholder="搜索代码/名称"
-              className="h-7 w-40 rounded border border-border bg-base pl-7 pr-2 text-[11px] text-foreground"
+              className="h-7 w-40 rounded border border-border bg-page pl-7 pr-2 text-[11px] text-foreground"
             />
           </div>
         </div>
@@ -739,7 +739,7 @@ function DeviationView({ onPreview }: {
                 className={`inline-flex h-7 w-7 items-center justify-center rounded border transition-colors ${
                   rulesOpen
                     ? 'border-accent/40 bg-accent/10 text-accent'
-                    : 'border-border bg-base text-secondary hover:text-foreground'
+                    : 'border-border bg-page text-secondary hover:text-foreground'
                 }`}
               >
                 <HelpCircle className="h-3.5 w-3.5" />
@@ -748,7 +748,7 @@ function DeviationView({ onPreview }: {
                 <button
                   type="button"
                   onClick={() => overview.refetch()}
-                  className="inline-flex h-7 items-center gap-1 rounded border border-border bg-base px-2 text-[11px] text-secondary transition-colors hover:text-foreground"
+                  className="inline-flex h-7 items-center gap-1 rounded border border-border bg-page px-2 text-[11px] text-secondary transition-colors hover:text-foreground"
                   title="立即刷新"
                 >
                   <RefreshCw className={`h-3 w-3 ${updating ? 'animate-spin' : ''}`} />
@@ -765,7 +765,7 @@ function DeviationView({ onPreview }: {
                 className={`inline-flex h-7 items-center gap-2 rounded border px-2.5 text-[11px] font-medium transition-colors ${
                   enabled
                     ? 'border-accent/40 bg-accent/12 text-accent'
-                    : 'border-border bg-base text-secondary hover:text-foreground'
+                    : 'border-border bg-page text-secondary hover:text-foreground'
                 }`}
               >
                 <Power className="h-3 w-3" />
@@ -836,7 +836,7 @@ function DeviationView({ onPreview }: {
                 value={query}
                 onChange={e => setQuery(e.target.value)}
                 placeholder="搜索代码/名称"
-                className="h-7 w-40 rounded border border-border bg-base pl-7 pr-2 text-[11px] text-foreground"
+                className="h-7 w-40 rounded border border-border bg-page pl-7 pr-2 text-[11px] text-foreground"
               />
             </div>
           </div>
@@ -906,7 +906,7 @@ function DeviationView({ onPreview }: {
         return `${w.replace('d', '日')}${s}`
       }).join(' / ')
       return (
-        <div key={i} className="rounded border border-border bg-base px-2.5 py-2">
+        <div key={i} className="rounded border border-border bg-page px-2.5 py-2">
           <div className="text-[11px] font-medium text-foreground">
             {rule.board}
             {rule.st && <span className="ml-1 text-danger">ST</span>}
@@ -1043,7 +1043,7 @@ function SegmentedControl<T extends string>({ value, onChange, options }: {
   options: Array<{ value: T; label: string }>
 }) {
   return (
-    <div className="inline-flex h-7 overflow-hidden rounded border border-border bg-base">
+    <div className="inline-flex h-7 overflow-hidden rounded border border-border bg-page">
       {options.map(o => (
         <button
           key={o.value}

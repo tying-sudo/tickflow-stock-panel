@@ -46,7 +46,7 @@ export function PipelineScopeConfig() {
               <label
                 className={`flex items-start gap-2.5 rounded-card border px-3 py-2.5 transition-colors ${
                   locked ? 'cursor-default' : 'cursor-pointer'
-                } ${on ? 'border-accent/40 bg-accent/[0.05]' : 'border-border bg-base/30 hover:border-border/70'}`}
+                } ${on ? 'border-accent/40 bg-accent/[0.05]' : 'border-border bg-page/30 hover:border-border/70'}`}
               >
                 <button
                   type="button"
@@ -55,7 +55,7 @@ export function PipelineScopeConfig() {
                   }}
                   disabled={locked || updateToggle.isPending}
                   className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
-                    on ? 'bg-accent border-accent' : 'bg-base border-border'
+                    on ? 'bg-accent border-accent' : 'bg-page border-border'
                   } ${locked ? 'opacity-80' : ''}`}
                   role="checkbox"
                   aria-checked={on}

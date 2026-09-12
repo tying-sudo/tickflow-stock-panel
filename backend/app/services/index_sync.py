@@ -26,6 +26,39 @@ logger = logging.getLogger(__name__)
 _EXCHANGES = ["SH", "SZ", "BJ"]
 
 
+def _supplement_index_daily_gaps(
+    df: pl.DataFrame,
+    chunk: list[str],
+    start_time: datetime,
+    end_time: datetime,
+) -> pl.DataFrame:
+    """easy_tdx 无日K的指数 → 腾讯/新浪补充通道 (2026-09-08)。
+
+    97/98 国证新段等指数在 TDX /bars 无数据, 主源返回后按 chunk 内未出现
+    的 symbol 补拉 (em_index_source)。失败只记 warning 不中断主流程。
+    """
+    got: set[str] = set()
+    if not df.is_empty() and "symbol" in df.columns:
+        got = set(df["symbol"].cast(pl.Utf8).to_list())
+    missing = [s for s in chunk if s not in got]
+    if not missing:
+        return df
+    try:
+        from app.services import em_index_source
+
+        extra = em_index_source.fetch_daily_many(missing, start_time=start_time, end_time=end_time)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("指数日K补充源失败 (%d 只): %s", len(missing), exc)
+        return df
+    if extra.is_empty():
+        return df
+    logger.info(
+        "指数日K补充源(腾讯/新浪): %d/%d 只, +%d 行",
+        extra["symbol"].n_unique(), len(missing), extra.height,
+    )
+    return pl.concat([df, extra], how="diagonal_relaxed") if not df.is_empty() else extra
+
+
 def _fetch_daily_chunk(
     chunk: list[str],
     *,
@@ -41,27 +74,42 @@ def _fetch_daily_chunk(
     TickFlow klines.batch, 切 easy_tdx 后指数/ETF 日K持续静默拉空
     (完整性修复任务 0 行、实时开关被门禁锁死的根因)。
     asset_type 透传给 provider (easy_tdx 指数 vol 不 /100, 股票/ETF /100)。
+    指数缺口走 em_index_source 补充 (腾讯/新浪, 2026-09-08)。
     """
     provider_name = preferences.get_daily_data_provider()
+    df: pl.DataFrame
     if provider_name != "tickflow":
         from app.data_providers import custom as custom_sources
 
         if custom_sources.provider_has_dataset(provider_name, "daily"):
-            return custom_sources.get_provider(provider_name).get_daily(
+            df = custom_sources.get_provider(provider_name).get_daily(
                 chunk,
                 start_time=start_time,
                 end_time=end_time,
                 asset_type=asset_type,
                 on_chunk_done=on_chunk_done,
             )
-    return kline_sync.sync_daily_batch(
-        chunk,
-        count=count,
-        batch_size=None,
-        start_time=start_time,
-        end_time=end_time,
-        on_chunk_done=on_chunk_done,
-    )
+        else:
+            df = kline_sync.sync_daily_batch(
+                chunk,
+                count=count,
+                batch_size=None,
+                start_time=start_time,
+                end_time=end_time,
+                on_chunk_done=on_chunk_done,
+            )
+    else:
+        df = kline_sync.sync_daily_batch(
+            chunk,
+            count=count,
+            batch_size=None,
+            start_time=start_time,
+            end_time=end_time,
+            on_chunk_done=on_chunk_done,
+        )
+    if asset_type == "index":
+        df = _supplement_index_daily_gaps(df, chunk, start_time, end_time)
+    return df
 
 
 def _quotes_to_index_instruments(resp) -> pl.DataFrame:
@@ -150,6 +198,37 @@ def _fetch_instruments_by_type(instrument_type: str, asset_type_label: str) -> p
     )
 
 
+def _patch_index_cn_names(df: pl.DataFrame) -> pl.DataFrame:
+    """指数维表英文短名 → 腾讯中文全称 (2026-09-08, 用户反馈)。
+
+    上游 (TickFlow) 对 97/98 国证段返回英文短名 (CNTAI50/CNIROBOT/CNTHKD...),
+    指数页/看板直接显示; 腾讯 qt.gtimg.cn 返回中文全称 (创业板人工智能/
+    机器人产业...), 逐同步覆盖。只改名称不含中文的行, 中文名不动。
+    """
+    if df.is_empty() or "symbol" not in df.columns or "name" not in df.columns:
+        return df
+    mask_cjk = pl.col("name").cast(pl.Utf8).str.contains(r"[\u4e00-\u9fff]")
+    need = df.filter(~mask_cjk)
+    if need.is_empty():
+        return df
+    from app.services import em_index_source
+
+    names = em_index_source.fetch_cn_names(need["symbol"].cast(pl.Utf8).to_list())
+    if not names:
+        return df
+    remap = pl.col("symbol").cast(pl.Utf8).map_elements(
+        lambda s: names.get(s), return_dtype=pl.Utf8,
+    )
+    patched = df.with_columns(
+        pl.when(mask_cjk)
+        .then(pl.col("name"))
+        .otherwise(pl.coalesce([remap, pl.col("name")]))  # 腾讯无结果 → 保留原名
+        .alias("name")
+    )
+    logger.info("指数中文名补充: %d 只 (腾讯)", len(names))
+    return patched
+
+
 def sync_index_instruments(
     repo: KlineRepository,
     pull_index: bool = True,
@@ -199,7 +278,9 @@ def sync_index_instruments(
 
     total = 0
     if index_parts:
-        index_inst = pl.concat(index_parts, how="diagonal_relaxed").unique(subset=["symbol"], keep="last").sort("symbol")
+        index_inst = _patch_index_cn_names(
+            pl.concat(index_parts, how="diagonal_relaxed").unique(subset=["symbol"], keep="last").sort("symbol")
+        )
         if not index_inst.is_empty():
             repo.save_index_instruments(index_inst)
             total += index_inst.height

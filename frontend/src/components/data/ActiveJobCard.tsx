@@ -45,7 +45,7 @@ function LogViewer({ log }: { log: PipelineJob['log'] }) {
   }, [displayLog])
 
   return (
-    <div ref={containerRef} className="rounded-btn bg-base/60 border border-border max-h-48 overflow-y-auto px-3 py-2 font-mono text-[11px] space-y-0.5">
+    <div ref={containerRef} className="rounded-btn bg-page/60 border border-border max-h-48 overflow-y-auto px-3 py-2 font-mono text-[11px] space-y-0.5">
       {displayLog.map((line, i) => (
         <div key={`${line.ts}-${i}`} className="flex gap-2 text-secondary">
           <span className="text-muted shrink-0">{formatLogTime(line.ts)}</span>

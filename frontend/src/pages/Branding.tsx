@@ -114,7 +114,7 @@ function Sample({ v }: { v: Variant }) {
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
-      className="rounded-card border border-border overflow-hidden bg-base flex"
+      className="rounded-card border border-border overflow-hidden bg-page flex"
     >
       {/* 模拟侧边栏 */}
       <div className="w-56 bg-surface border-r border-border flex flex-col">

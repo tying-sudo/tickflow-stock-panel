@@ -16,12 +16,12 @@ from app.services.screener import ScreenerService
 
 router = APIRouter(prefix="/api/overview", tags=["overview"])
 
-_CACHE_TTL = 5.0
-_cache: dict[str, Any] | None = None
-_cache_key: str | None = None
-_cache_ts: float = 0.0
+_CACHE_TTL_LATEST = 5.0      # 最新日: 实时轮询期间频繁失效, 短 TTL 防陈旧
+_CACHE_TTL_HISTORICAL = 600.0  # 历史日: 快照不可变, 长缓存让切日期零重建(数据/配置变更走 invalidate)
+_CACHE_MAX_ENTRIES = 8       # 近期查看过的日期各留一份, 日历来回切换即时响应
 # 缓存跨线程读写锁: market_overview 在 FastAPI 线程池读, invalidate 在数据刷新线程清,
 # 无锁会读到撕裂/过期状态。用模块级 Lock 守护 check-then-set 与 clear。
+_cache: dict[str, tuple[float, dict]] = {}
 _cache_lock = threading.Lock()
 
 
@@ -30,11 +30,8 @@ def invalidate_overview_cache() -> None:
 
     清除数据后调用, 避免看板在 TTL 窗口内继续返回旧的聚合结果。
     """
-    global _cache, _cache_key, _cache_ts
     with _cache_lock:
-        _cache = None
-        _cache_key = None
-        _cache_ts = 0.0
+        _cache.clear()
 
 
 CORE_INDEX_NAMES = {
@@ -234,74 +231,15 @@ def _quote_status(request: Request) -> dict:
     return qs.status()
 
 
-def _index_quotes(request: Request, as_of: date | None = None) -> list[dict]:
-    qs = getattr(request.app.state, "quote_service", None)
-    rows: list[dict] = []
-    if qs and as_of is None:
-        df = qs.get_index_quotes(list(CORE_INDEX_SYMBOLS))
-        if not df.is_empty():
-            rows = df.to_dicts()
-
-    if not rows:
-        repo = getattr(request.app.state, "repo", None)
-        if repo:
-            placeholders = ", ".join("?" for _ in CORE_INDEX_SYMBOLS)
-            try:
-                db_rows = repo.execute_all(
-                    f"""
-                    WITH ranked AS (
-                        SELECT symbol, date, close,
-                               row_number() OVER (PARTITION BY symbol ORDER BY date DESC) AS rn
-                        FROM kline_index_daily
-                        WHERE symbol IN ({placeholders})
-                          AND (? IS NULL OR date <= ?)
-                    ), latest AS (
-                        SELECT symbol,
-                               max(CASE WHEN rn = 1 THEN date END) AS date,
-                               max(CASE WHEN rn = 1 THEN close END) AS last_price,
-                               max(CASE WHEN rn = 2 THEN close END) AS prev_close
-                        FROM ranked
-                        WHERE rn <= 2
-                        GROUP BY symbol
-                    )
-                    SELECT symbol, date, last_price, prev_close
-                    FROM latest
-                    """,
-                    [*CORE_INDEX_SYMBOLS, as_of, as_of],
-                )
-            except Exception:  # noqa: BLE001
-                db_rows = []
-            for symbol, dt, last_price, prev_close in db_rows:
-                change_amount = None
-                change_pct = None
-                lp = _finite(last_price)
-                pc = _finite(prev_close)
-                if lp is not None and pc not in (None, 0):
-                    change_amount = lp - pc
-                    change_pct = change_amount / pc * 100
-                rows.append({
-                    "symbol": symbol,
-                    "name": CORE_INDEX_NAMES.get(symbol),
-                    "date": str(dt) if dt else None,
-                    "last_price": lp,
-                    "close": lp,
-                    "prev_close": pc,
-                    "change_amount": change_amount,
-                    "change_pct": change_pct,
-                })
-
-    by_symbol = {r.get("symbol"): r for r in rows}
-    out = []
-    for symbol in CORE_INDEX_SYMBOLS:
-        r = by_symbol.get(symbol, {"symbol": symbol})
-        out.append({
-            "symbol": symbol,
-            "name": r.get("name") or CORE_INDEX_NAMES[symbol],
-            "last_price": _finite(r.get("last_price") if r.get("last_price") is not None else r.get("close")),
-            "change_pct": _finite(r.get("change_pct")),
-            "change_amount": _finite(r.get("change_amount")),
-        })
-    return out
+def _index_quotes(request: Request, as_of: date | None = None, symbols: list[str] | None = None) -> list[dict]:
+    """指数行情 — 委托 market_overview_builder.index_quotes (与看板装配同源)。"""
+    from app.services.market_overview_builder import index_quotes as _builder_index_quotes
+    return _builder_index_quotes(
+        getattr(request.app.state, "repo", None),
+        getattr(request.app.state, "quote_service", None),
+        as_of,
+        symbols,
+    )
 
 
 def _top_rows(rows: list[dict], key: str, descending: bool, limit: int = 8) -> list[dict]:
@@ -347,7 +285,16 @@ def _pct_band_rows(values: list[float]) -> list[dict]:
     return out
 
 
-def _build_overview(request: Request, as_of: date | None = None) -> dict:
+def _dashboard_index_symbols() -> list[str]:
+    """看板指数卡片偏好列表; 空 = 回退默认四大核心指数。"""
+    from app.services import preferences
+    try:
+        return preferences.get_dashboard_index_symbols()
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _build_overview(request: Request, as_of: date | None = None, index_symbols: list[str] | None = None) -> dict:
     """装配市场总览(委托给 services.market_overview_builder,保持行为一致)。
 
     逻辑已抽离至 build_market_overview,以解耦对 Request 的依赖,
@@ -359,23 +306,35 @@ def _build_overview(request: Request, as_of: date | None = None) -> dict:
         quote_service=getattr(request.app.state, "quote_service", None),
         depth_service=getattr(request.app.state, "depth_service", None),
         as_of=as_of,
+        index_symbols=index_symbols,
     )
 
 
 @router.get("/market")
 def market_overview(request: Request, as_of: date | None = None):
-    """总览页单次请求聚合数据，避免前端拉全市场明细后再计算。"""
-    global _cache, _cache_key, _cache_ts
+    """总览页单次请求聚合数据，避免前端拉全市场明细后再计算。
+
+    缓存按 日期+指数列表 各留一份(上限 _CACHE_MAX_ENTRIES): 最新日 TTL 5s;
+    历史日快照不可变, TTL 600s, 数据清除/刷新/扩展配置/看板指数变更均会
+    调 invalidate_overview_cache 即时失效。
+    """
     now = time.time()
-    cache_key = as_of.isoformat() if as_of else "latest"
+    index_symbols = _dashboard_index_symbols()
+    base_key = as_of.isoformat() if as_of else "latest"
+    # 指数列表参与装配结果 → 必须进缓存键 (保存端点另会清缓存, 双保险)
+    symbols_key = ",".join(index_symbols) if index_symbols else "core"
+    cache_key = f"{base_key}@{symbols_key}"
+    ttl = _CACHE_TTL_LATEST if as_of is None else _CACHE_TTL_HISTORICAL
     # 读缓存持锁, 避免与 invalidate 的 clear 竞态读到撕裂状态
     with _cache_lock:
-        if _cache is not None and _cache_key == cache_key and (now - _cache_ts) < _CACHE_TTL:
-            return _cache
+        hit = _cache.get(cache_key)
+        if hit is not None and (now - hit[0]) < ttl:
+            return hit[1]
     # 装配在锁外进行 (耗时), 允许并发未命中时各自构建, 不长时间持锁串行化请求
-    data = _build_overview(request, as_of)
+    data = _build_overview(request, as_of, index_symbols or None)
     with _cache_lock:
-        _cache = data
-        _cache_key = cache_key
-        _cache_ts = now
+        _cache[cache_key] = (now, data)
+        if len(_cache) > _CACHE_MAX_ENTRIES:
+            for k in sorted(_cache, key=lambda k: _cache[k][0])[:-_CACHE_MAX_ENTRIES]:
+                _cache.pop(k, None)
     return data

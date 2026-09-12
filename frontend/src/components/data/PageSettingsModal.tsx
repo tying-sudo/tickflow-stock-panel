@@ -222,7 +222,7 @@ function SortableCardRow({
       style={style}
       className={`flex items-center gap-2 rounded-card border px-3 py-2 transition-colors ${
         isDragging ? 'bg-elevated shadow-lg' : ''
-      } ${on ? 'border-accent/40 bg-accent/[0.05]' : 'border-border bg-base/30'}`}
+      } ${on ? 'border-accent/40 bg-accent/[0.05]' : 'border-border bg-page/30'}`}
     >
       {/* 拖拽手柄 */}
       <button
@@ -239,7 +239,7 @@ function SortableCardRow({
         type="button"
         onClick={onToggle}
         className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
-          on ? 'bg-accent border-accent' : 'bg-base border-border'
+          on ? 'bg-accent border-accent' : 'bg-page border-border'
         }`}
         role="checkbox"
         aria-checked={on}

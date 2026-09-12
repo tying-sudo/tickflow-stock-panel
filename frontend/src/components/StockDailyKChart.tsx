@@ -244,7 +244,7 @@ export function StockDailyKChart({
                 value={volumeCompare.days}
                 disabled={!volumeCompare.enabled}
                 onChange={event => updateVolumeCompare({ days: Number(event.target.value) })}
-                className="h-5 rounded border border-border bg-base px-1 text-[10px] text-secondary outline-none disabled:opacity-40"
+                className="h-5 rounded border border-border bg-page px-1 text-[10px] text-secondary outline-none disabled:opacity-40"
               >
                 {Array.from({ length: 20 }, (_, index) => index + 1).map(days => (
                   <option key={days} value={days}>前{days}日均量</option>

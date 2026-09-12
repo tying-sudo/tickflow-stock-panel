@@ -87,7 +87,7 @@ export function EndpointTestDialog({ hasKey, tierLabel, currentEndpoint, onClose
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.97, y: 8 }}
           transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-          className="relative w-[480px] max-h-[90vh] flex flex-col rounded-card border border-border bg-base shadow-2xl overflow-hidden"
+          className="relative w-[480px] max-h-[90vh] flex flex-col rounded-card border border-border bg-page shadow-2xl overflow-hidden"
         >
           {/* 顶栏 */}
           <div className="flex items-center justify-between px-5 py-3 border-b border-border shrink-0">

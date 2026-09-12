@@ -30,6 +30,8 @@ interface Props {
   showAvgLine?: boolean
   /** 竞价段 (09:25-09:30) 淡色背景标注。指数分时启用。 */
   showPhaseBands?: boolean
+  /** 成交量副图。组合估值等无量纲曲线传 false, 价格主图占满全高。默认 true。 */
+  showVolume?: boolean
 }
 
 function fmtAmt(v: number): string {
@@ -64,7 +66,7 @@ function getLimitPrices(prevClose: number, priceLimit?: PriceLimitInfo): {
   return { limitUp, limitDown, upPct, downPct }
 }
 
-function buildOption(data: MinuteKlineRow[], prevClose: number | undefined, avgPrices: number[], lineColor: string, areaColor: string, yMode: YMode, ct: ChartTheme, priceLimit?: PriceLimitInfo, showLimitLines = true, showAvgLine = true, priceLines: Props['priceLines'] = [], showPhaseBands = false): EChartsOption {
+function buildOption(data: MinuteKlineRow[], prevClose: number | undefined, avgPrices: number[], lineColor: string, areaColor: string, yMode: YMode, ct: ChartTheme, priceLimit?: PriceLimitInfo, showLimitLines = true, showAvgLine = true, priceLines: Props['priceLines'] = [], showPhaseBands = false, showVolume = true): EChartsOption {
   // 将数据映射到全天时间轴上的正确位置
   const timeIndexMap = new Map(FULL_DAY_TIMES.map((t, i) => [t, i]))
   const closes = new Array(FULL_DAY_TIMES.length).fill(null) as (number | null)[]
@@ -203,12 +205,12 @@ function buildOption(data: MinuteKlineRow[], prevClose: number | undefined, avgP
     }
   }
 
-  // x 轴标签: 9:25, 9:30, 10:30, 11:30/13:00, 14:00, 15:00
+  // x 轴标签: 9:30, 10:30, 11:30/13:00, 14:00, 15:00
   // 索引按 FULL_DAY_TIMES 动态查找 (网格头部含 09:25-09:29 竞价槽, 不能硬编码)
-  // 11:30 和 13:00 相邻会重叠, 合并为一个标签
+  // 11:30 和 13:00 相邻会重叠, 合并为一个标签; 9:25 与 9:30 仅隔 5 槽 (~2% 宽)
+  // 同显也重叠 — 竞价段由 markArea 底色标注, 首标签取 9:30 (开盘节点)
   const labelIdx = (t: string) => FULL_DAY_TIMES.indexOf(t)
   const xAxisLabelMap: Record<number, string> = {
-    [labelIdx('09:25')]: '9:25',
     [labelIdx('09:30')]: '9:30',
     [labelIdx('10:30')]: '10:30',
     [labelIdx('11:30')]: '11:30/13:00',
@@ -247,10 +249,12 @@ function buildOption(data: MinuteKlineRow[], prevClose: number | undefined, avgP
     axisPointer: {
       link: [{ xAxisIndex: 'all' }],
     },
-    grid: [
-      { left: 60, right: 55, top: 24, bottom: '34%' },
-      { left: 60, right: 55, top: '69%', bottom: 20 },
-    ],
+    grid: showVolume
+      ? [
+        { left: 60, right: 55, top: 24, bottom: '34%' },
+        { left: 60, right: 55, top: '69%', bottom: 20 },
+      ]
+      : [{ left: 60, right: 55, top: 24, bottom: 20 }],
     xAxis: [
       {
         type: 'category',
@@ -287,8 +291,9 @@ function buildOption(data: MinuteKlineRow[], prevClose: number | undefined, avgP
           lineStyle: { color: ct.grid },
         },
       },
-      {
-        type: 'category',
+      // 成交量副图 x 轴 (无量纲曲线时省略)
+      ...(showVolume ? [{
+        type: 'category' as const,
         gridIndex: 1,
         data: FULL_DAY_TIMES,
         boundaryGap: false,
@@ -296,7 +301,7 @@ function buildOption(data: MinuteKlineRow[], prevClose: number | undefined, avgP
         axisLabel: { show: false },
         axisTick: { show: false },
         splitLine: { show: false },
-      },
+      }] : []),
     ],
     yAxis: [
       {
@@ -323,7 +328,9 @@ function buildOption(data: MinuteKlineRow[], prevClose: number | undefined, avgP
           formatter: (v: number) => v.toFixed(2),
         },
       },
-      {
+      // 成交量副图 y 轴 (无量纲曲线时省略)
+      ...(showVolume ? [{
+        type: 'value' as const,
         scale: true,
         gridIndex: 1,
         splitNumber: 2,
@@ -331,7 +338,7 @@ function buildOption(data: MinuteKlineRow[], prevClose: number | undefined, avgP
         axisTick: { show: false },
         splitLine: { show: false },
         axisLabel: { show: false },
-      },
+      }] : []),
       ...(isValidPrice(prevClose) && yMin != null && yMax != null ? [{
         type: 'value' as const,
         position: 'right' as const,
@@ -382,7 +389,7 @@ function buildOption(data: MinuteKlineRow[], prevClose: number | undefined, avgP
         connectNulls: true,
         markLine: markLineData.length > 0 ? { symbol: 'none', data: markLineData, animation: false, silent: true } : undefined,
         // 竞价段 (09:25-09:30) 淡色背景, 区分盘前撮合与连续竞价。
-        // 段宽仅 5 槽 (~12px), 不放文字标签 (x 轴 9:25 刻度已标识)。
+        // 段宽仅 5 槽 (~2% 宽), 不放文字标签; x 轴首标签取 9:30 (开盘节点)。
         markArea: showPhaseBands ? {
           silent: true,
           itemStyle: { color: 'rgba(127,127,127,0.08)' },
@@ -399,14 +406,15 @@ function buildOption(data: MinuteKlineRow[], prevClose: number | undefined, avgP
         lineStyle: { width: 1, color: THEME.avgLine },
         connectNulls: true,
       }] : []),
-      {
+      // 成交量柱 (无量纲曲线时省略)
+      ...(showVolume ? [{
         name: '成交量',
-        type: 'bar',
+        type: 'bar' as const,
         data: volumes,
         xAxisIndex: 1,
         yAxisIndex: 1,
         cursor: 'crosshair',
-      },
+      }] : []),
     ],
   }
 }
@@ -424,6 +432,7 @@ export function EChartsIntraday({
   showLimitLines = true,
   showAvgLine = true,
   showPhaseBands = false,
+  showVolume = true,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<ECharts | null>(null)
@@ -531,11 +540,11 @@ export function EChartsIntraday({
       }
       fullDayToDataIdx.current = mapping
 
-      chart.setOption(buildOption(data, prevClose, avgPrices, lineColor, areaFill, yMode, ct, priceLimit, showLimitLines, showAvgLine, priceLines, showPhaseBands), true)
+      chart.setOption(buildOption(data, prevClose, avgPrices, lineColor, areaFill, yMode, ct, priceLimit, showLimitLines, showAvgLine, priceLines, showPhaseBands, showVolume), true)
     } else {
       chart.clear()
     }
-  }, [data, prevClose, height, lineColor, areaFill, yMode, ct, priceLimit, showLimitLines, showAvgLine, priceLines, showPhaseBands])
+  }, [data, prevClose, height, lineColor, areaFill, yMode, ct, priceLimit, showLimitLines, showAvgLine, priceLines, showPhaseBands, showVolume])
 
   useEffect(() => {
     return () => {
@@ -618,10 +627,12 @@ export function EChartsIntraday({
                 <span style={{ display: 'inline-block', width: 14, height: 2, background: THEME.avgLine }} />
                 <span style={{ color: THEME.avgLine }}>{avg?.toFixed(2)}</span>
               </span>}
-              <span className="text-muted">量</span>
-              <span className="text-secondary">{d.volume.toFixed(0)}</span>
-              <span className="text-muted">额</span>
-              <span className="text-secondary">{fmtAmt(d.amount)}</span>
+              {showVolume && <>
+                <span className="text-muted">量</span>
+                <span className="text-secondary">{d.volume.toFixed(0)}</span>
+                <span className="text-muted">额</span>
+                <span className="text-secondary">{fmtAmt(d.amount)}</span>
+              </>}
             </>
           )}
         </div>

@@ -95,7 +95,7 @@ function RangeField({ label, minVal, maxVal, onMinChange, onMaxChange, unit, ste
         onChange={e => onMinChange(e.target.value === '' ? null : Number(e.target.value))}
         placeholder="最小"
         step={step}
-        className="w-20 px-1.5 py-0.5 rounded bg-base border border-border text-[11px] font-mono text-foreground text-center focus:outline-none focus:border-accent/50"
+        className="w-20 px-1.5 py-0.5 rounded bg-page border border-border text-[11px] font-mono text-foreground text-center focus:outline-none focus:border-accent/50"
       />
       <span className="text-[10px] text-muted">~</span>
       <input
@@ -104,7 +104,7 @@ function RangeField({ label, minVal, maxVal, onMinChange, onMaxChange, unit, ste
         onChange={e => onMaxChange(e.target.value === '' ? null : Number(e.target.value))}
         placeholder="最大"
         step={step}
-        className="w-20 px-1.5 py-0.5 rounded bg-base border border-border text-[11px] font-mono text-foreground text-center focus:outline-none focus:border-accent/50"
+        className="w-20 px-1.5 py-0.5 rounded bg-page border border-border text-[11px] font-mono text-foreground text-center focus:outline-none focus:border-accent/50"
       />
       {unit && <span className="text-[10px] text-muted shrink-0">{unit}</span>}
     </div>
@@ -147,7 +147,7 @@ function ParamField({ def, value, onChange }: {
         <select
           value={value ?? def.default}
           onChange={e => onChange(e.target.value)}
-          className="w-24 px-1.5 py-0.5 rounded bg-base border border-border text-[11px] font-mono text-foreground focus:outline-none focus:border-accent/50"
+          className="w-24 px-1.5 py-0.5 rounded bg-page border border-border text-[11px] font-mono text-foreground focus:outline-none focus:border-accent/50"
         >
           {def.options.map(o => <option key={o} value={o}>{o}</option>)}
         </select>
@@ -165,7 +165,7 @@ function ParamField({ def, value, onChange }: {
         step={def.step ?? 0.1}
         min={def.min}
         max={def.max}
-        className="w-20 px-1.5 py-0.5 rounded bg-base border border-border text-[11px] font-mono text-foreground text-center focus:outline-none focus:border-accent/50"
+        className="w-20 px-1.5 py-0.5 rounded bg-page border border-border text-[11px] font-mono text-foreground text-center focus:outline-none focus:border-accent/50"
       />
       {def.min != null && def.max != null && (
         <span className="text-[10px] text-muted">{def.min}~{def.max}</span>
@@ -391,18 +391,18 @@ export function StrategySettingsDialog({ strategyId, onClose, onSaved, onAiModif
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] text-muted/50 uppercase tracking-wider w-8 shrink-0">名称</span>
                       <input type="text" value={strategyName} onChange={e => setStrategyName(e.target.value)}
-                        className="flex-1 h-8 px-3 rounded-lg bg-base border-0 ring-1 ring-border/30 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-accent/30 transition-shadow" />
+                        className="flex-1 h-8 px-3 rounded-lg bg-page border-0 ring-1 ring-border/30 text-sm font-medium text-foreground focus:outline-none focus:ring-2 focus:ring-accent/30 transition-shadow" />
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-[10px] text-muted/50 uppercase tracking-wider w-8 shrink-0">描述</span>
                       <input type="text" value={strategyDesc} onChange={e => setStrategyDesc(e.target.value)}
-                        className="flex-1 h-8 px-3 rounded-lg bg-base border-0 ring-1 ring-border/30 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent/30 transition-shadow" />
+                        className="flex-1 h-8 px-3 rounded-lg bg-page border-0 ring-1 ring-border/30 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-accent/30 transition-shadow" />
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5 pb-0.5 shrink-0">
                     <span className="text-[10px] text-muted/50">显示上限</span>
                     <input type="number" value={displayLimit ?? ''} onChange={e => setDisplayLimit(e.target.value ? Number(e.target.value) : null)} step={1} min={10} max={200} placeholder="不限"
-                      className="w-14 h-8 px-1.5 rounded-lg bg-base border border-border/40 text-xs font-mono text-foreground text-center focus:outline-none focus:border-accent/50" />
+                      className="w-14 h-8 px-1.5 rounded-lg bg-page border border-border/40 text-xs font-mono text-foreground text-center focus:outline-none focus:border-accent/50" />
                     <span className="text-[10px] text-muted/50">只</span>
                   </div>
                 </div>
@@ -434,7 +434,7 @@ export function StrategySettingsDialog({ strategyId, onClose, onSaved, onAiModif
                     </div>
                     {/* 添加子策略面板 */}
                     {showAddChild && (
-                      <div className="rounded-lg border border-border bg-base/60 p-2 space-y-1 max-h-48 overflow-y-auto">
+                      <div className="rounded-lg border border-border bg-page/60 p-2 space-y-1 max-h-48 overflow-y-auto">
                         {candidates.length === 0 ? (
                           <div className="text-[11px] text-muted py-2 text-center">无可添加的策略</div>
                         ) : candidates.map(s => (
@@ -453,7 +453,7 @@ export function StrategySettingsDialog({ strategyId, onClose, onSaved, onAiModif
                     ) : (
                       <div className="space-y-1.5">
                         {compositeChildren.map((c, i) => (
-                          <div key={c.id} className="flex items-center gap-2 rounded-lg bg-base/60 px-3 py-2">
+                          <div key={c.id} className="flex items-center gap-2 rounded-lg bg-page/60 px-3 py-2">
                             <span className="text-[10px] text-muted/50 font-mono w-5">{i + 1}</span>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-1.5">
@@ -471,7 +471,7 @@ export function StrategySettingsDialog({ strategyId, onClose, onSaved, onAiModif
                                 min={0}
                                 value={c.weight}
                                 onChange={e => setCompositeChildren(prev => prev.map((p, j) => j === i ? { ...p, weight: parseFloat(e.target.value) || 0 } : p))}
-                                className="w-16 h-7 px-1.5 rounded-lg bg-base border border-border/40 text-xs font-mono text-foreground text-center focus:outline-none focus:border-accent/50"
+                                className="w-16 h-7 px-1.5 rounded-lg bg-page border border-border/40 text-xs font-mono text-foreground text-center focus:outline-none focus:border-accent/50"
                               />
                               <button onClick={() => removeCompositeChild(c.id)} className="text-danger/50 hover:text-danger p-1">
                                 <Trash2 className="h-3 w-3" />
@@ -512,7 +512,7 @@ export function StrategySettingsDialog({ strategyId, onClose, onSaved, onAiModif
                               const active = boards.includes(b)
                               return (
                                 <button key={b} onClick={() => { const cur: string[] = basicFilter.boards ?? ALL_BOARDS; const next = active ? cur.filter(x => x !== b) : [...cur, b]; setBF('boards', next.length === 0 ? ALL_BOARDS : next) }}
-                                  className={`px-1.5 py-0.5 rounded text-[10px] font-medium border transition-colors cursor-pointer ${active ? `${color.select.border} ${color.select.bgLight} ${color.select.text}` : `border-border bg-base text-muted ${color.select.borderHover}`}`}>{b}</button>
+                                  className={`px-1.5 py-0.5 rounded text-[10px] font-medium border transition-colors cursor-pointer ${active ? `${color.select.border} ${color.select.bgLight} ${color.select.text}` : `border-border bg-page text-muted ${color.select.borderHover}`}`}>{b}</button>
                               )
                             })}
                           </div>
@@ -520,7 +520,7 @@ export function StrategySettingsDialog({ strategyId, onClose, onSaved, onAiModif
                         <div className="flex items-center gap-1.5">
                           <span className="text-[11px] text-secondary w-16 shrink-0 text-right">ST</span>
                           <button onClick={() => setBF('exclude_st', !basicFilter.exclude_st)}
-                            className={`px-1.5 py-0.5 rounded text-[10px] font-medium border transition-colors cursor-pointer ${basicFilter.exclude_st ? 'border-danger/40 bg-danger/10 text-danger' : 'border-border bg-base text-muted hover:border-danger/30'}`}>{basicFilter.exclude_st ? '排除' : '包含'}</button>
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-medium border transition-colors cursor-pointer ${basicFilter.exclude_st ? 'border-danger/40 bg-danger/10 text-danger' : 'border-border bg-page text-muted hover:border-danger/30'}`}>{basicFilter.exclude_st ? '排除' : '包含'}</button>
                         </div>
                       </div>
                     </div>
@@ -559,13 +559,13 @@ export function StrategySettingsDialog({ strategyId, onClose, onSaved, onAiModif
                         <div className="flex items-center gap-1.5">
                           <span className="text-[11px] text-secondary w-12 shrink-0">止损</span>
                           <input type="number" value={stopLoss ?? ''} onChange={e => setStopLoss(e.target.value === '' ? null : Number(e.target.value))} step={0.01} min={-0.5} max={0}
-                            className="w-16 h-6 px-1.5 rounded bg-base border border-border text-[11px] font-mono text-foreground text-center focus:outline-none focus:border-accent/50" />
+                            className="w-16 h-6 px-1.5 rounded bg-page border border-border text-[11px] font-mono text-foreground text-center focus:outline-none focus:border-accent/50" />
                           <span className="text-[10px] text-muted">{stopLoss != null ? `${(stopLoss * 100).toFixed(1)}%` : '—'}</span>
                         </div>
                         <div className="flex items-center gap-1.5">
                           <span className="text-[11px] text-secondary w-12 shrink-0">持有</span>
                           <input type="number" value={maxHoldDays ?? ''} onChange={e => setMaxHoldDays(e.target.value === '' ? null : Number(e.target.value))} step={1} min={1}
-                            className="w-16 h-6 px-1.5 rounded bg-base border border-border text-[11px] font-mono text-foreground text-center focus:outline-none focus:border-accent/50" />
+                            className="w-16 h-6 px-1.5 rounded bg-page border border-border text-[11px] font-mono text-foreground text-center focus:outline-none focus:border-accent/50" />
                           <span className="text-[10px] text-muted">天</span>
                         </div>
                         <div className="text-[11px] text-muted pt-1 border-t border-border/10">
@@ -580,7 +580,7 @@ export function StrategySettingsDialog({ strategyId, onClose, onSaved, onAiModif
                       title="入场触发器"
                       accent="text-accent"
                       defaultOpen={false}
-                      extra={<SignalTriggerActions kind="entry" signals={entrySignals} onChange={setEntrySignals} buttonClassName="rounded-md border border-border bg-base p-1 text-muted transition-colors cursor-pointer" iconClassName="h-3 w-3" />}
+                      extra={<SignalTriggerActions kind="entry" signals={entrySignals} onChange={setEntrySignals} buttonClassName="rounded-md border border-border bg-page p-1 text-muted transition-colors cursor-pointer" iconClassName="h-3 w-3" />}
                     >
                       <SignalPicker signals={entrySignals} onChange={setEntrySignals} kind="entry" variant="dialog" />
                       <div className="text-[10px] leading-4 text-muted/70">任一入场点满足即进入候选。</div>
@@ -591,7 +591,7 @@ export function StrategySettingsDialog({ strategyId, onClose, onSaved, onAiModif
                       title="出场触发器"
                       accent="text-warning"
                       defaultOpen={false}
-                      extra={<SignalTriggerActions kind="exit" signals={exitSignals} onChange={setExitSignals} buttonClassName="rounded-md border border-border bg-base p-1 text-muted transition-colors cursor-pointer" iconClassName="h-3 w-3" />}
+                      extra={<SignalTriggerActions kind="exit" signals={exitSignals} onChange={setExitSignals} buttonClassName="rounded-md border border-border bg-page p-1 text-muted transition-colors cursor-pointer" iconClassName="h-3 w-3" />}
                     >
                       <SignalPicker signals={exitSignals} onChange={setExitSignals} kind="exit" variant="dialog" />
                       <div className="text-[10px] leading-4 text-muted/70">任一出场点满足即触发出场。</div>

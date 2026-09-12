@@ -153,6 +153,24 @@ def _split_symbol(symbol: str) -> tuple[str, str]:
     return market, code
 
 
+# TDX 标准 quotes 协议 market 编号 (响应行回填 symbol 时的映射同源).
+_QUOTE_MARKET_ID = {"SZ": 0, "SH": 1, "BJ": 2}
+
+
+def _filter_quoted_rows(rows: list[dict[str, Any]], batch: list[str]) -> list[dict[str, Any]]:
+    """只保留请求过的 (market, code) 响应行.
+
+    上游对不认识的代码不报错而是回垃圾行 (实测 970070.SZ/932000.SH →
+    market=1 code=600839 price=0), 价格非零的串线帧也会在此被挡掉,
+    避免污染股票/指数记录流.
+    """
+    allowed = {(_QUOTE_MARKET_ID.get(m, 0), c) for m, c in (_split_symbol(s) for s in batch)}
+    return [
+        row for row in rows
+        if (int(row.get("market") or 0), str(row.get("code") or "")) in allowed
+    ]
+
+
 # 新浪财报三表 (serve /sina/financial-report, 独立于 TDX 行情服务器) → canonical 列映射.
 # canonical 列与 fuyao provider 完全一致 (financial_sync 按 symbol+period_end 合并,
 # 两源数据可共存互不覆盖). 数值新浪原生为元/浮点, 直接透传; `_同比` 列不收.
@@ -1009,12 +1027,28 @@ class EasyTdxProvider:
         )
         return [record for batch in results for record in batch]
 
-    def _realtime_batch(self, batch: list[str]) -> list[dict[str, Any]]:
-        stocks = [{"market": m, "code": c} for m, c in (_split_symbol(s) for s in batch)]
+    def _quotes_post(self, stocks: list[dict[str, str]]) -> list[dict[str, Any]]:
+        """POST /quotes; 空批次包换实例重试一次.
+
+        上游对部分批次会间歇性静默返回空包 (2026-09-08 收盘定版轮实测每轮
+        15-30% 批次空包, 深证成指/创业板指因此整日缺席缓存) — request()
+        轮转到下一实例即可取回; 仍空则接受 (纯停牌/不支持代码的批次合法为空,
+        盘前维护窗口整批空也只多花一次请求).
+        """
         payload = self._pool.request(
             "POST", "/quotes", {"stocks": stocks}, timeout=20.0, quotes_only=True,
         )
         rows = payload.get("data") or []
+        if not rows:
+            payload = self._pool.request(
+                "POST", "/quotes", {"stocks": stocks}, timeout=20.0, quotes_only=True,
+            )
+            rows = payload.get("data") or []
+        return rows
+
+    def _realtime_batch(self, batch: list[str]) -> list[dict[str, Any]]:
+        stocks = [{"market": m, "code": c} for m, c in (_split_symbol(s) for s in batch)]
+        rows = _filter_quoted_rows(self._quotes_post(stocks), batch)
         records: list[dict[str, Any]] = []
         for row in rows:
             code = str(row.get("code") or "")
@@ -1076,10 +1110,7 @@ class EasyTdxProvider:
 
     def _depth_batch(self, batch: list[str]) -> list[dict[str, Any]]:
         stocks = [{"market": m, "code": c} for m, c in (_split_symbol(s) for s in batch)]
-        payload = self._pool.request(
-            "POST", "/quotes", {"stocks": stocks}, timeout=20.0, quotes_only=True,
-        )
-        return payload.get("data") or []
+        return _filter_quoted_rows(self._quotes_post(stocks), batch)
 
     def _book_from_quote(self, row: dict[str, Any], fetched_ms: int) -> dict[str, Any] | None:
         """标准协议 quotes → depth5 契约; 最优正数档与现价偏差 >0.5% 判陈旧丢弃.

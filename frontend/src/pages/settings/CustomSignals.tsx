@@ -113,7 +113,7 @@ export function SettingsCustomSignalsPanel({ highlight }: { highlight?: string }
           <StatCard label="已启用自定义" value={enabledCustomSignals} hint="会注入 csg_* 列" />
         </div>
 
-        <div className="mt-5 rounded-card border border-border bg-base/60 p-1.5">
+        <div className="mt-5 rounded-card border border-border bg-page/60 p-1.5">
           <div className="grid grid-cols-1 gap-1.5 md:grid-cols-2">
             {tabs.map(tab => {
               const active = activeSection === tab.key
@@ -152,7 +152,7 @@ export function SettingsCustomSignalsPanel({ highlight }: { highlight?: string }
           </div>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
             {BUILTIN_SIGNAL_DEFINITIONS.map(sig => (
-              <div key={sig.id} className="rounded-card border border-border bg-base p-4">
+              <div key={sig.id} className="rounded-card border border-border bg-page p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
@@ -194,7 +194,7 @@ export function SettingsCustomSignalsPanel({ highlight }: { highlight?: string }
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {signals.map(sig => (
-              <div key={sig.id} className="rounded-card border border-border bg-base p-4">
+              <div key={sig.id} className="rounded-card border border-border bg-page p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
@@ -252,14 +252,14 @@ export function SettingsCustomSignalsPanel({ highlight }: { highlight?: string }
             ))}
             {list.isLoading &&
               Array.from({ length: 2 }).map((_, i) => (
-                <div key={`sk-${i}`} className="rounded-card border border-border bg-base p-4 space-y-3">
+                <div key={`sk-${i}`} className="rounded-card border border-border bg-page p-4 space-y-3">
                   <Skeleton w="w-1/2" h="h-4" />
                   <Skeleton w="w-1/3" h="h-3" />
                   <Skeleton h="h-4" />
                 </div>
               ))}
             {!list.isLoading && signals.length === 0 && (
-              <div className="rounded-card border border-border bg-base px-5 py-10 text-center text-sm text-muted md:col-span-2">
+              <div className="rounded-card border border-border bg-page px-5 py-10 text-center text-sm text-muted md:col-span-2">
                 暂无自定义信号，点击右上角「新建自定义信号」。
               </div>
             )}
@@ -274,7 +274,7 @@ export function SettingsCustomSignalsPanel({ highlight }: { highlight?: string }
 
 function StatCard({ label, value, hint }: { label: string; value: number; hint: string }) {
   return (
-    <div className="rounded-card border border-border/80 bg-base/70 px-4 py-3">
+    <div className="rounded-card border border-border/80 bg-page/70 px-4 py-3">
       <div className="text-[11px] text-muted">{label}</div>
       <div className="mt-1 text-2xl font-semibold text-foreground">{value}</div>
       <div className="mt-0.5 text-[11px] text-muted">{hint}</div>

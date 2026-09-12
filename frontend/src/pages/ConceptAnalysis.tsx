@@ -545,7 +545,7 @@ function PulseList({
   const toneHover = mode === 'up' ? 'hover:border-bull/35' : 'hover:border-bear/35'
 
   return (
-    <div className={cn('rounded-xl border bg-base/35 p-2', toneBorder)}>
+    <div className={cn('rounded-xl border bg-page/35 p-2', toneBorder)}>
       <div className="mb-1.5 flex items-center justify-between px-1">
         <div className={cn('flex items-center gap-1.5 text-xs font-medium', toneText)}>
           {mode === 'up' ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
@@ -641,13 +641,13 @@ function ConceptRail({
         </div>
         <div className="mt-2 relative">
           <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
-          <input value={search} onChange={e => onSearch(e.target.value)} placeholder="搜索概念" className="h-8 w-full rounded-lg border border-border bg-base pl-8 pr-3 text-xs text-foreground outline-none focus:border-accent/50" />
+          <input value={search} onChange={e => onSearch(e.target.value)} placeholder="搜索概念" className="h-8 w-full rounded-lg border border-border bg-page pl-8 pr-3 text-xs text-foreground outline-none focus:border-accent/50" />
         </div>
         <div className="mt-2 grid grid-cols-5 overflow-hidden rounded-lg border border-border text-[10px]">
           {([
             ['heat', '强度'], ['avgPct', '涨幅'], ['leader', '龙头'], ['amount', '成交'], ['down', '跌幅'],
           ] as [SortMode, string][]).map(([key, label]) => (
-            <button key={key} onClick={() => onSort(key)} className={cn('py-1.5 transition-colors', sortMode === key ? 'bg-accent/15 text-accent' : 'bg-base text-muted hover:text-foreground')}>{label}</button>
+            <button key={key} onClick={() => onSort(key)} className={cn('py-1.5 transition-colors', sortMode === key ? 'bg-accent/15 text-accent' : 'bg-page text-muted hover:text-foreground')}>{label}</button>
           ))}
         </div>
       </div>
@@ -705,7 +705,7 @@ function ConceptFocus({ stat, onStockClick }: { stat: ConceptStat | null; onStoc
         </div>
       </div>
 
-      <div className="grid shrink-0 gap-3 border-b border-border bg-base/25 p-4 lg:grid-cols-[1fr_1.15fr]">
+      <div className="grid shrink-0 gap-3 border-b border-border bg-page/25 p-4 lg:grid-cols-[1fr_1.15fr]">
         <LeaderStage stocks={topLeaders} onStockClick={onStockClick} />
         <ScoreExplain stock={topLeaders[0]} />
       </div>
@@ -754,7 +754,7 @@ function ConceptFocus({ stat, onStockClick }: { stat: ConceptStat | null; onStoc
 }
 
 function MiniStat({ label, value, cls }: { label: string; value: string; cls: string }) {
-  return <div className="rounded-lg border border-border/60 bg-base/35 px-2 py-1.5"><div className="text-[10px] text-muted">{label}</div><div className={cn('mt-0.5 truncate text-sm font-semibold', cls)}>{value}</div></div>
+  return <div className="rounded-lg border border-border/60 bg-page/35 px-2 py-1.5"><div className="text-[10px] text-muted">{label}</div><div className={cn('mt-0.5 truncate text-sm font-semibold', cls)}>{value}</div></div>
 }
 
 function LeaderStage({ stocks, onStockClick }: { stocks: EnrichedStock[]; onStockClick: (symbol: string, name?: string) => void }) {
@@ -767,7 +767,7 @@ function LeaderStage({ stocks, onStockClick }: { stocks: EnrichedStock[]; onStoc
       </div>
       <div className="grid gap-2 md:grid-cols-3">
         {stocks.map((stock, idx) => (
-          <div key={stock.symbol} onClick={() => onStockClick(stock.symbol, stock.name || undefined)} className={cn('rounded-lg border p-3 cursor-pointer hover:brightness-110 transition-all', idx === 0 ? 'border-amber-400/25 bg-amber-400/[0.06]' : 'border-border/60 bg-base/35')}>
+          <div key={stock.symbol} onClick={() => onStockClick(stock.symbol, stock.name || undefined)} className={cn('rounded-lg border p-3 cursor-pointer hover:brightness-110 transition-all', idx === 0 ? 'border-amber-400/25 bg-amber-400/[0.06]' : 'border-border/60 bg-page/35')}>
             <div className="flex items-center justify-between gap-2">
               <span className={cn('text-[10px] font-medium', idx === 0 ? 'text-amber-300' : 'text-muted')}>{idx === 0 ? '主龙头' : `辅龙 ${idx}`}</span>
               <span className="font-mono text-[11px] text-amber-300">{stock.leaderScore.toFixed(0)}</span>
@@ -806,5 +806,5 @@ function ScoreExplain({ stock }: { stock?: EnrichedStock }) {
 }
 
 function Part({ label, value, cls }: { label: string; value: number; cls: string }) {
-  return <div className="rounded-lg bg-base/35 px-2 py-1.5"><div className="mb-1 flex justify-between text-[10px] text-muted"><span>{label}</span><span>{Math.round(value * 100)}</span></div><div className="h-1 rounded-full bg-elevated"><div className={cn('h-full rounded-full', cls)} style={{ width: `${Math.max(3, value * 100)}%` }} /></div></div>
+  return <div className="rounded-lg bg-page/35 px-2 py-1.5"><div className="mb-1 flex justify-between text-[10px] text-muted"><span>{label}</span><span>{Math.round(value * 100)}</span></div><div className="h-1 rounded-full bg-elevated"><div className={cn('h-full rounded-full', cls)} style={{ width: `${Math.max(3, value * 100)}%` }} /></div></div>
 }

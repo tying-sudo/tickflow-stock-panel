@@ -78,7 +78,7 @@ function MinuteProbePanel() {
             value={symbol}
             onChange={(e) => setSymbol(e.target.value)}
             placeholder="603261.SH"
-            className="w-44 rounded-btn border border-border bg-base px-3 py-1.5 text-sm text-foreground outline-none focus:border-accent"
+            className="w-44 rounded-btn border border-border bg-page px-3 py-1.5 text-sm text-foreground outline-none focus:border-accent"
             onKeyDown={(e) => e.key === 'Enter' && !loading && runProbe()}
           />
         </div>
@@ -90,7 +90,7 @@ function MinuteProbePanel() {
             max={30}
             value={days}
             onChange={(e) => setDays(Math.max(1, Math.min(30, Number(e.target.value) || 1)))}
-            className="w-24 rounded-btn border border-border bg-base px-3 py-1.5 text-sm text-foreground outline-none focus:border-accent"
+            className="w-24 rounded-btn border border-border bg-page px-3 py-1.5 text-sm text-foreground outline-none focus:border-accent"
           />
         </div>
         <button
@@ -245,7 +245,7 @@ function SeedPanel() {
               max={50}
               value={count}
               onChange={(e) => setCount(Math.max(1, Math.min(50, Number(e.target.value) || 1)))}
-              className="w-24 rounded-btn border border-border bg-base px-3 py-1.5 text-sm text-foreground outline-none focus:border-accent"
+              className="w-24 rounded-btn border border-border bg-page px-3 py-1.5 text-sm text-foreground outline-none focus:border-accent"
             />
           </div>
           <label className="flex items-center gap-1.5 pb-1.5">

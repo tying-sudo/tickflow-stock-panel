@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react'
@@ -19,6 +19,10 @@ interface DatePickerProps {
   className?: string
   buttonClassName?: string
   align?: 'left' | 'right'
+  /** 有数据的交易日列表(YYYY-MM-DD); 提供后非交易日置灰不可点亮 */
+  enabledDates?: string[]
+  /** 点击非交易日回调 — 单元格可点击用于提示, 但不会选中/关闭弹层 */
+  onDisabledDateClick?: (date: string) => void
 }
 
 const WEEKDAYS = ['一', '二', '三', '四', '五', '六', '日']
@@ -48,6 +52,8 @@ export function DatePicker({
   className = '',
   buttonClassName = '',
   align = 'right',
+  enabledDates,
+  onDisabledDateClick,
 }: DatePickerProps) {
   const [open, setOpen] = useState(false)
   const [showYearPicker, setShowYearPicker] = useState(false)
@@ -128,28 +134,37 @@ export function DatePicker({
   const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate()
   const prevMonthDays = new Date(viewYear, viewMonth, 0).getDate()
 
-  const cells: { day: number; cur: boolean; dateStr: string; disabled: boolean }[] = []
+  // 交易日集合: 提供后非交易日置灰(仍可点击, 由 onDisabledDateClick 提示)
+  const enabledSet = useMemo(() => (enabledDates ? new Set(enabledDates) : null), [enabledDates])
+  type Cell = { day: number; cur: boolean; dateStr: string; disabled: boolean; nonTrading: boolean }
+  const mkCell = (day: number, cur: boolean, dateStr: string): Cell => {
+    const outOfRange = (!!min && dateStr < min) || (!!max && dateStr > max)
+    return {
+      day, cur, dateStr,
+      disabled: outOfRange,
+      nonTrading: !outOfRange && enabledSet != null && !enabledSet.has(dateStr),
+    }
+  }
+
+  const cells: Cell[] = []
 
   // 上月尾部
   for (let i = offset - 1; i >= 0; i--) {
     const d = prevMonthDays - i
     const m = viewMonth === 0 ? 11 : viewMonth - 1
     const y = viewMonth === 0 ? viewYear - 1 : viewYear
-    const ds = toDateStr(y, m, d)
-    cells.push({ day: d, cur: false, dateStr: ds, disabled: !!min && ds < min || !!max && ds > max })
+    cells.push(mkCell(d, false, toDateStr(y, m, d)))
   }
   // 当月
   for (let d = 1; d <= daysInMonth; d++) {
-    const ds = toDateStr(viewYear, viewMonth, d)
-    cells.push({ day: d, cur: true, dateStr: ds, disabled: !!min && ds < min || !!max && ds > max })
+    cells.push(mkCell(d, true, toDateStr(viewYear, viewMonth, d)))
   }
   // 下月头部 — 补齐到 6 行 × 7 = 42
   const remain = 42 - cells.length
   for (let d = 1; d <= remain; d++) {
     const m = viewMonth === 11 ? 0 : viewMonth + 1
     const y = viewMonth === 11 ? viewYear + 1 : viewYear
-    const ds = toDateStr(y, m, d)
-    cells.push({ day: d, cur: false, dateStr: ds, disabled: !!min && ds < min || !!max && ds > max })
+    cells.push(mkCell(d, false, toDateStr(y, m, d)))
   }
 
   const displayLabel = value || placeholder
@@ -251,31 +266,34 @@ export function DatePicker({
                   {cells.map((c, i) => {
                     const isSelected = c.dateStr === value
                     const isToday = c.dateStr === today
+                    const notSelectable = c.disabled || c.nonTrading
                     return (
                       <button
                         key={i}
-                    type="button"
-                    disabled={c.disabled}
-                    onClick={() => {
-                      if (!c.disabled) {
-                        onChange(c.dateStr)
-                        setOpen(false)
-                      }
-                    }}
-                    className={`
-                      h-7 w-full text-xs rounded-btn transition-colors duration-100
-                      ${c.cur ? 'text-foreground' : 'text-muted/40'}
-                      ${isSelected ? 'bg-accent text-white font-bold' : ''}
-                      ${isToday && !isSelected ? 'border border-accent/40' : ''}
-                      ${!isSelected && !c.disabled ? 'hover:bg-elevated' : ''}
-                      ${c.disabled ? 'opacity-20 cursor-not-allowed' : 'cursor-pointer'}
-                    `}
-                  >
-                    {c.day}
-                  </button>
-                )
-              })}
-            </div>
+                        type="button"
+                        disabled={c.disabled}
+                        title={c.nonTrading ? '非交易日' : undefined}
+                        onClick={() => {
+                          if (c.disabled) return
+                          // 非交易日: 不点亮不选中, 仅回调提示
+                          if (c.nonTrading) { onDisabledDateClick?.(c.dateStr); return }
+                          onChange(c.dateStr)
+                          setOpen(false)
+                        }}
+                        className={`
+                          h-7 w-full text-xs rounded-btn transition-colors duration-100
+                          ${c.cur ? 'text-foreground' : 'text-muted/40'}
+                          ${isSelected ? 'bg-accent text-white font-bold' : ''}
+                          ${isToday && !isSelected ? 'border border-accent/40' : ''}
+                          ${!isSelected && !notSelectable ? 'hover:bg-elevated' : ''}
+                          ${notSelectable ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer'}
+                        `}
+                      >
+                        {c.day}
+                      </button>
+                    )
+                  })}
+                </div>
               </>
             )}
           </motion.div>

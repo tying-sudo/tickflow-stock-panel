@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useState } from 'react'
 
 // ===== 全局 toast 状态 =====
-type ToastItem = { id: number; msg: string; kind: 'error' | 'success' }
+type ToastItem = { id: number; msg: string; kind: 'error' | 'success' | 'info' }
 let _id = 0
 const _listeners: Set<(items: ToastItem[]) => void> = new Set()
 let _queue: ToastItem[] = []
 
 function _emit() { _listeners.forEach(fn => fn([..._queue])) }
 
-function toast(msg: string, kind: 'error' | 'success' = 'error') {
+function toast(msg: string, kind: 'error' | 'success' | 'info' = 'error') {
+  // 连续同文去重: 非交易日格子连点等场景不刷屏
+  if (_queue.length > 0 && _queue[_queue.length - 1].msg === msg) return
   const item = { id: ++_id, msg, kind }
   _queue = [..._queue, item]
   _emit()
@@ -43,7 +45,9 @@ export function ToastContainer() {
           className={`pointer-events-auto px-4 py-2.5 rounded-lg shadow-lg text-sm font-medium animate-in slide-in-from-bottom-2 fade-in duration-200 ${
             t.kind === 'error'
               ? 'bg-red-500/90 text-white'
-              : 'bg-emerald-500/90 text-white'
+              : t.kind === 'info'
+                ? 'bg-accent/90 text-white'
+                : 'bg-emerald-500/90 text-white'
           }`}
         >
           {t.msg}

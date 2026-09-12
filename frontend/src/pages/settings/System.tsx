@@ -150,7 +150,7 @@ export function SettingsSystemPanel() {
               setToastMax(v)
               refreshAlertToastConfig()
             }}
-            className="w-16 h-8 px-1.5 rounded-btn border border-border bg-base text-xs text-foreground disabled:opacity-50"
+            className="w-16 h-8 px-1.5 rounded-btn border border-border bg-page text-xs text-foreground disabled:opacity-50"
           >
             {[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}
           </select>
@@ -186,14 +186,14 @@ export function SettingsSystemPanel() {
                 setSoundType(v)
                 if (v !== 'none') previewSound(v)
               }}
-              className="w-20 h-8 px-1.5 rounded-btn border border-border bg-base text-xs text-foreground disabled:opacity-50"
+              className="w-20 h-8 px-1.5 rounded-btn border border-border bg-page text-xs text-foreground disabled:opacity-50"
             >
               {SOUND_OPTIONS.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
             </select>
             <button
               onClick={() => previewSound(soundType)}
               disabled={!toastEnabled || !soundEnabled || soundType === 'none'}
-              className="px-2 h-8 rounded-btn border border-border bg-base text-xs text-secondary hover:text-foreground hover:border-accent/30 disabled:opacity-50 transition-colors cursor-pointer"
+              className="px-2 h-8 rounded-btn border border-border bg-page text-xs text-secondary hover:text-foreground hover:border-accent/30 disabled:opacity-50 transition-colors cursor-pointer"
             >
               试听
             </button>
@@ -249,7 +249,7 @@ export function SettingsSystemPanel() {
                   setVoiceURI(getCurrentVoiceURI())
                 }
               }}
-              className="w-32 h-8 px-1.5 rounded-btn border border-border bg-base text-xs text-foreground disabled:opacity-50"
+              className="w-32 h-8 px-1.5 rounded-btn border border-border bg-page text-xs text-foreground disabled:opacity-50"
             >
               <option value={getCurrentVoiceURI()}>默认偏好</option>
               {voices
@@ -260,7 +260,7 @@ export function SettingsSystemPanel() {
             <button
               onClick={() => previewVoice()}
               disabled={!toastEnabled || !voiceEnabled}
-              className="px-2 h-8 rounded-btn border border-border bg-base text-xs text-secondary hover:text-foreground hover:border-accent/30 disabled:opacity-50 transition-colors cursor-pointer"
+              className="px-2 h-8 rounded-btn border border-border bg-page text-xs text-secondary hover:text-foreground hover:border-accent/30 disabled:opacity-50 transition-colors cursor-pointer"
             >
               试听
             </button>

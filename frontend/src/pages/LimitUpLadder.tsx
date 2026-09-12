@@ -557,12 +557,12 @@ function MonitorMenu({ stock, direction, sealMode, monitorRule, anchorRect, hasD
               value={threshold}
               onChange={e => setThreshold(e.target.value)}
               placeholder="≤ 报警"
-              className="flex-1 min-w-0 h-7 px-2 rounded bg-base border border-border text-foreground text-center tabular-nums placeholder:text-muted/40 focus:outline-none focus:border-accent/50"
+              className="flex-1 min-w-0 h-7 px-2 rounded bg-page border border-border text-foreground text-center tabular-nums placeholder:text-muted/40 focus:outline-none focus:border-accent/50"
             />
             <select
               value={unitKey}
               onChange={e => setUnitKey(e.target.value)}
-              className="h-7 px-1.5 rounded bg-base border border-border text-secondary text-[11px] focus:outline-none focus:border-accent/50 cursor-pointer"
+              className="h-7 px-1.5 rounded bg-page border border-border text-secondary text-[11px] focus:outline-none focus:border-accent/50 cursor-pointer"
             >
               {units.map(u => (
                 <option key={u.key} value={u.key}>{u.label}</option>

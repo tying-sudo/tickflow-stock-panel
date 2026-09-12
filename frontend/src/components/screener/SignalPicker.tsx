@@ -47,8 +47,8 @@ export function SignalPicker({ signals, onChange, kind, variant = 'panel', built
     ? 'border-accent/50 bg-accent/10 text-accent'
     : 'border-warning/50 bg-warning/10 text-warning'
   const idle = variant === 'dialog'
-    ? 'border-border bg-base text-muted hover:border-accent/40'
-    : 'border-border bg-base text-muted hover:border-accent/40'
+    ? 'border-border bg-page text-muted hover:border-accent/40'
+    : 'border-border bg-page text-muted hover:border-accent/40'
   const customActive = isEntry
     ? 'border-accent/50 bg-accent/10 text-accent'
     : 'border-warning/50 bg-warning/10 text-warning'

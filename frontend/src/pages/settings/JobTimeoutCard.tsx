@@ -98,7 +98,7 @@ export function JobTimeoutCard() {
               step={regularTimeoutUnit === 'second' ? 60 : regularTimeoutUnit === 'minute' ? 1 : 0.5}
               value={regularTimeoutInput}
               onChange={e => setTimeoutDraft({ regular: e.target.value, long: longTimeoutInput })}
-              className="w-full rounded-btn border border-border bg-base px-2.5 py-1.5 text-sm text-foreground font-mono outline-none focus:border-accent"
+              className="w-full rounded-btn border border-border bg-page px-2.5 py-1.5 text-sm text-foreground font-mono outline-none focus:border-accent"
             />
             <select
               value={regularTimeoutUnit}
@@ -110,7 +110,7 @@ export function JobTimeoutCard() {
                 })
                 setRegularUnitOverride(nextUnit)
               }}
-              className="w-20 shrink-0 rounded-btn border border-border bg-base px-2 py-1.5 text-xs text-foreground outline-none focus:border-accent"
+              className="w-20 shrink-0 rounded-btn border border-border bg-page px-2 py-1.5 text-xs text-foreground outline-none focus:border-accent"
             >
               <option value="second">秒</option>
               <option value="minute">分钟</option>
@@ -130,7 +130,7 @@ export function JobTimeoutCard() {
               step={longTimeoutUnit === 'second' ? 60 : longTimeoutUnit === 'minute' ? 1 : 0.5}
               value={longTimeoutInput}
               onChange={e => setTimeoutDraft({ regular: regularTimeoutInput, long: e.target.value })}
-              className="w-full rounded-btn border border-border bg-base px-2.5 py-1.5 text-sm text-foreground font-mono outline-none focus:border-accent"
+              className="w-full rounded-btn border border-border bg-page px-2.5 py-1.5 text-sm text-foreground font-mono outline-none focus:border-accent"
             />
             <select
               value={longTimeoutUnit}
@@ -142,7 +142,7 @@ export function JobTimeoutCard() {
                 })
                 setLongUnitOverride(nextUnit)
               }}
-              className="w-20 shrink-0 rounded-btn border border-border bg-base px-2 py-1.5 text-xs text-foreground outline-none focus:border-accent"
+              className="w-20 shrink-0 rounded-btn border border-border bg-page px-2 py-1.5 text-xs text-foreground outline-none focus:border-accent"
             >
               <option value="second">秒</option>
               <option value="minute">分钟</option>

@@ -471,30 +471,30 @@ export function StrategyBuilderDialog({ open, onClose, onSavedId, mode = 'create
               <>
                 <div className="space-y-2">
                   <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="策略名称，如：强势反包"
-                    className="w-full h-9 px-3 rounded-lg bg-base border-0 ring-1 ring-border/30 text-sm font-medium text-foreground placeholder:text-muted/30 focus:outline-none focus:ring-2 focus:ring-accent/30" />
+                    className="w-full h-9 px-3 rounded-lg bg-page border-0 ring-1 ring-border/30 text-sm font-medium text-foreground placeholder:text-muted/30 focus:outline-none focus:ring-2 focus:ring-accent/30" />
                   <input type="text" value={description} onChange={e => setDescription(e.target.value)} placeholder="一句话描述，如：筛选前日阴线下跌、今日放量阳线反包的短线强势股"
-                    className="w-full h-8 px-3 rounded-lg bg-base border-0 ring-1 ring-border/30 text-sm text-foreground placeholder:text-muted/30 focus:outline-none focus:ring-2 focus:ring-accent/30" />
+                    className="w-full h-8 px-3 rounded-lg bg-page border-0 ring-1 ring-border/30 text-sm text-foreground placeholder:text-muted/30 focus:outline-none focus:ring-2 focus:ring-accent/30" />
                 </div>
                 <div>
                   <span className="text-[10px] text-muted/50 uppercase tracking-wider mb-1.5 block">选股方向</span>
                   <div className="flex gap-1">
                     {DIRECTIONS.map(d => (
-                      <button key={d.value} onClick={() => setDirection(d.value)} className={'px-2.5 py-1 rounded text-[11px] font-medium border transition-colors ' + (direction === d.value ? 'border-amber-400/40 bg-amber-400/10 text-amber-400' : 'border-border bg-base text-muted hover:border-amber-400/30')}>{d.label}</button>
+                      <button key={d.value} onClick={() => setDirection(d.value)} className={'px-2.5 py-1 rounded text-[11px] font-medium border transition-colors ' + (direction === d.value ? 'border-amber-400/40 bg-amber-400/10 text-amber-400' : 'border-border bg-page text-muted hover:border-amber-400/30')}>{d.label}</button>
                     ))}
                   </div>
                 </div>
                 <div>
                   <span className="text-[10px] text-muted/50 uppercase tracking-wider mb-1.5 block">执行后端</span>
                   <div className="flex gap-1">
-                    <button onClick={() => selectExecutionBackend('polars_expr')} className={'px-2.5 py-1 rounded text-[11px] font-medium border transition-colors ' + (executionBackend === 'polars_expr' ? 'border-amber-400/40 bg-amber-400/10 text-amber-400' : 'border-border bg-base text-muted hover:border-amber-400/30')}>Polars 表达式</button>
-                    <button onClick={() => selectExecutionBackend('matrix_native')} className={'px-2.5 py-1 rounded text-[11px] font-medium border transition-colors ' + (executionBackend === 'matrix_native' ? 'border-amber-400/40 bg-amber-400/10 text-amber-400' : 'border-border bg-base text-muted hover:border-amber-400/30')}>矩阵原生</button>
+                    <button onClick={() => selectExecutionBackend('polars_expr')} className={'px-2.5 py-1 rounded text-[11px] font-medium border transition-colors ' + (executionBackend === 'polars_expr' ? 'border-amber-400/40 bg-amber-400/10 text-amber-400' : 'border-border bg-page text-muted hover:border-amber-400/30')}>Polars 表达式</button>
+                    <button onClick={() => selectExecutionBackend('matrix_native')} className={'px-2.5 py-1 rounded text-[11px] font-medium border transition-colors ' + (executionBackend === 'matrix_native' ? 'border-amber-400/40 bg-amber-400/10 text-amber-400' : 'border-border bg-page text-muted hover:border-amber-400/30')}>矩阵原生</button>
                   </div>
                 </div>
                 <div>
                   <span className="text-[10px] text-muted/50 uppercase tracking-wider mb-1.5 block">策略规则</span>
                   <textarea value={rules} onChange={e => setRules(e.target.value)}
                     placeholder="描述你的选股逻辑，AI 会自动提取参数。例如：\n前一交易日为明显阴线且跌幅不低于2%，今日阳线收盘反包前一日实体，收盘价接近或高于前一日高点，成交量较前一日放大1.2倍以上，当前 close > ma5 或 close > ma10；使用 filter_history，并优先用 Polars shift/with_columns/filter 实现。"
-                    className="w-full h-28 px-3 py-2 rounded-lg bg-base border-0 ring-1 ring-border/30 text-sm text-foreground placeholder:text-muted/30 resize-none focus:outline-none focus:ring-2 focus:ring-accent/30" />
+                    className="w-full h-28 px-3 py-2 rounded-lg bg-page border-0 ring-1 ring-border/30 text-sm text-foreground placeholder:text-muted/30 resize-none focus:outline-none focus:ring-2 focus:ring-accent/30" />
                 </div>
                 {error && <div className="text-[11px] text-danger bg-danger/10 border border-danger/20 rounded-lg px-3 py-2">{error}</div>}
                 <button onClick={handleGenerate} disabled={loading || !name.trim() || !rules.trim()}
@@ -580,7 +580,7 @@ export function StrategyBuilderDialog({ open, onClose, onSavedId, mode = 'create
                     <div className="rounded-xl border border-border/30 bg-surface/30 px-4 py-6 text-[11px] text-muted text-center">未检测到策略参数，切换「代码」查看完整内容</div>
                   )
                 ) : (
-                  <pre className="bg-base border border-border/30 rounded-lg p-3 text-[11px] font-mono text-foreground/80 overflow-auto max-h-96 whitespace-pre-wrap">{code}</pre>
+                  <pre className="bg-page border border-border/30 rounded-lg p-3 text-[11px] font-mono text-foreground/80 overflow-auto max-h-96 whitespace-pre-wrap">{code}</pre>
                 )}
 
                 {error && <div className="text-[11px] text-danger bg-danger/10 border border-danger/20 rounded-lg px-3 py-2">{error}</div>}
@@ -589,7 +589,7 @@ export function StrategyBuilderDialog({ open, onClose, onSavedId, mode = 'create
                   <input type="text" value={instruction} onChange={e => setInstruction(e.target.value)}
                     onKeyDown={e => e.key === 'Enter' && handleModify()}
                     placeholder="调整策略逻辑，如：增加RSI超卖条件、要求今日放量、修改均线为30日..."
-                    className="flex-1 h-9 px-3 rounded-lg bg-base border-0 ring-1 ring-border/30 text-sm text-foreground placeholder:text-muted/30 focus:outline-none focus:ring-2 focus:ring-accent/30" />
+                    className="flex-1 h-9 px-3 rounded-lg bg-page border-0 ring-1 ring-border/30 text-sm text-foreground placeholder:text-muted/30 focus:outline-none focus:ring-2 focus:ring-accent/30" />
                   <button onClick={handleModify} disabled={loading || !instruction.trim()}
                     className="h-9 px-4 rounded-lg bg-amber-400/15 border border-amber-400/30 text-amber-400 text-xs font-medium flex items-center gap-1.5 hover:bg-amber-400/20 disabled:opacity-40 transition-all">
                     {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
@@ -605,14 +605,14 @@ export function StrategyBuilderDialog({ open, onClose, onSavedId, mode = 'create
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-2">
                   <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="策略名称，如：我的反包策略"
-                    className="h-9 px-3 rounded-lg bg-base border-0 ring-1 ring-border/30 text-sm font-medium text-foreground placeholder:text-muted/30 focus:outline-none focus:ring-2 focus:ring-accent/30" />
+                    className="h-9 px-3 rounded-lg bg-page border-0 ring-1 ring-border/30 text-sm font-medium text-foreground placeholder:text-muted/30 focus:outline-none focus:ring-2 focus:ring-accent/30" />
                   <input type="text" value={description} onChange={e => setDescription(e.target.value)} placeholder="一句话描述策略逻辑"
-                    className="h-9 px-3 rounded-lg bg-base border-0 ring-1 ring-border/30 text-sm text-foreground placeholder:text-muted/30 focus:outline-none focus:ring-2 focus:ring-accent/30" />
+                    className="h-9 px-3 rounded-lg bg-page border-0 ring-1 ring-border/30 text-sm text-foreground placeholder:text-muted/30 focus:outline-none focus:ring-2 focus:ring-accent/30" />
                 </div>
                 <div className="flex items-center gap-1">
                   <span className="mr-2 text-[10px] text-muted/50 uppercase tracking-wider">执行后端</span>
-                  <button onClick={() => selectExecutionBackend('polars_expr')} className={'px-2.5 py-1 rounded text-[11px] font-medium border transition-colors ' + (executionBackend === 'polars_expr' ? 'border-accent/40 bg-accent/10 text-accent' : 'border-border bg-base text-muted')}>Polars 表达式</button>
-                  <button onClick={() => selectExecutionBackend('matrix_native')} className={'px-2.5 py-1 rounded text-[11px] font-medium border transition-colors ' + (executionBackend === 'matrix_native' ? 'border-accent/40 bg-accent/10 text-accent' : 'border-border bg-base text-muted')}>矩阵原生</button>
+                  <button onClick={() => selectExecutionBackend('polars_expr')} className={'px-2.5 py-1 rounded text-[11px] font-medium border transition-colors ' + (executionBackend === 'polars_expr' ? 'border-accent/40 bg-accent/10 text-accent' : 'border-border bg-page text-muted')}>Polars 表达式</button>
+                  <button onClick={() => selectExecutionBackend('matrix_native')} className={'px-2.5 py-1 rounded text-[11px] font-medium border transition-colors ' + (executionBackend === 'matrix_native' ? 'border-accent/40 bg-accent/10 text-accent' : 'border-border bg-page text-muted')}>矩阵原生</button>
                 </div>
                 <div className="rounded-xl border border-border/40 bg-elevated/50 p-4 space-y-2.5">
                   <div className="flex items-center justify-between gap-2">
@@ -631,10 +631,10 @@ export function StrategyBuilderDialog({ open, onClose, onSavedId, mode = 'create
                     value={code}
                     onChange={e => { setCode(e.target.value); setValidated(false) }}
                     spellCheck={false}
-                    className="w-full h-[420px] rounded-xl border border-border/40 bg-base p-4 text-[11px] leading-relaxed font-mono text-foreground/80 resize-none focus:outline-none focus:ring-2 focus:ring-accent/30"
+                    className="w-full h-[420px] rounded-xl border border-border/40 bg-page p-4 text-[11px] leading-relaxed font-mono text-foreground/80 resize-none focus:outline-none focus:ring-2 focus:ring-accent/30"
                   />
                   <div className="text-[11px] text-muted leading-relaxed">
-                    新建自定义策略会保存到 <code className="px-1 py-0.5 rounded bg-base text-xs font-mono text-foreground/80">data/strategies/custom/</code>；修改已有策略会保存回原文件。
+                    新建自定义策略会保存到 <code className="px-1 py-0.5 rounded bg-page text-xs font-mono text-foreground/80">data/strategies/custom/</code>；修改已有策略会保存回原文件。
                   </div>
                   {error && <div className="text-[11px] text-danger bg-danger/10 border border-danger/20 rounded-lg px-3 py-2">{error}</div>}
                   <div className="flex items-center justify-end gap-2">

@@ -212,6 +212,57 @@ def prune_enriched_partitions(
     return removed
 
 
+def scrub_snapshot_quote_ts(data_dir: Path, issues: list[IntegrityIssue]) -> int:
+    """把指数/ETF 族"盘中快照"分区里早于收盘线的 quote_ts 置 null (原地清洗)。
+
+    背景 (2026-09-08): 980xxx 板块指数的实时 timestamp 是 bar 级北京零点,
+    盘前轮询 merge 进 kline_index_daily 后分区 max(quote_ts)=00:00 永远
+    < 收盘线 → 完整性扫描每轮都判"盘中快照" → 每次重启触发修复管道,
+    而修复拉取 (merge-upsert 不删旧行) 治愈不了时间戳 → 无限循环放大
+    (还顺带把 ETF 灌进 kline_daily)。指数/ETF 族是"时间戳错、内容好",
+    行级置 null 当场治愈。
+
+    股票族 (kline_daily) 刻意不清洗: 它的盘中快照是内容真坏 (close=停机
+    时刻价, volume=半日累计), 必须走修复管道重拉 — 见模块 docstring。
+    """
+    import polars as pl
+
+    cleaned = 0
+    snap_days = sorted({i.day for i in issues if i.kind == "snapshot"})
+    for table in ("kline_index_daily", "kline_etf_daily"):
+        for day in snap_days:
+            part = Path(data_dir) / table / f"date={day.isoformat()}" / "part.parquet"
+            if not part.exists():
+                continue
+            try:
+                df = pl.read_parquet(part)
+                if "quote_ts" not in df.columns:
+                    continue
+                cutoff_ms = int(
+                    datetime.combine(day, CLOSE_CUTOFF, tzinfo=CN_TZ).timestamp() * 1000
+                )
+                nn = df["quote_ts"].drop_nulls()
+                if nn.is_empty() or nn.min() >= cutoff_ms:
+                    continue
+                df = df.with_columns(
+                    pl.when(pl.col("quote_ts") < cutoff_ms)
+                    .then(None)
+                    .otherwise(pl.col("quote_ts"))
+                    .alias("quote_ts")
+                )
+                tmp = part.with_name(part.name + ".scrub.tmp")
+                df.write_parquet(tmp)
+                tmp.replace(part)
+                cleaned += 1
+                logger.warning(
+                    "integrity: scrub snapshot quote_ts %s/date=%s (< %s 置 null)",
+                    table, day, CLOSE_CUTOFF,
+                )
+            except Exception as e:  # noqa: BLE001
+                logger.warning("scrub %s %s failed: %s", table, day, e)
+    return cleaned
+
+
 def describe_issues(issues: list[IntegrityIssue]) -> str:
     """面向用户的一句话描述 (409 详情 / 日志用)。"""
     if not issues:
@@ -332,6 +383,17 @@ def boot_integrity_check(app_state) -> None:
         return
     if not issues:
         logger.info("boot integrity check: 近 %d 个交易日数据完整", SCAN_WINDOW_DAYS)
+        return
+    # 快照分区先试原地清洗 (时间戳错, 数据本身好): 清完重扫, 剩余的真
+    # 缺口/股票快照才值得跑修复管道。不清洗 → index 零点戳永存 →
+    # 每次重启都触发修复 → 无限循环 (2026-09-08)。
+    try:
+        if scrub_snapshot_quote_ts(repo.store.data_dir, issues):
+            issues = scan_recent_integrity(repo.store.data_dir) or []
+    except Exception as e:  # noqa: BLE001
+        logger.warning("boot scrub failed (soft, 继续按未清洗处理): %s", e)
+    if not issues:
+        logger.info("boot integrity check: 快照时间戳已清洗, 近 %d 个交易日数据完整", SCAN_WINDOW_DAYS)
         return
     earliest = earliest_issue_day(issues)
     logger.warning("boot integrity check: %s (共 %d 个坏分区)", describe_issues(issues), len(issues))

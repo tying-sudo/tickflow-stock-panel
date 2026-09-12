@@ -401,7 +401,7 @@ export function CreateExtDialog({ onClose }: { onClose: () => void }) {
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
                 placeholder={mode === 'snapshot' ? '例: 概念' : '例: 资金流'}
-                className="w-full h-9 px-3 rounded-lg bg-base border border-border text-xs text-foreground placeholder:text-muted/40 focus:outline-none focus:ring-1 focus:ring-accent/30 focus:border-accent/50 transition-shadow"
+                className="w-full h-9 px-3 rounded-lg bg-page border border-border text-xs text-foreground placeholder:text-muted/40 focus:outline-none focus:ring-1 focus:ring-accent/30 focus:border-accent/50 transition-shadow"
               />
             </div>
             <div>
@@ -410,7 +410,7 @@ export function CreateExtDialog({ onClose }: { onClose: () => void }) {
                 value={id}
                 onChange={(e) => setId(e.target.value.replace(/[^a-zA-Z0-9_]/g, ''))}
                 placeholder={mode === 'snapshot' ? '例: concept' : '例: money_flow'}
-                className="w-full h-9 px-3 rounded-lg bg-base border border-border text-xs text-foreground font-mono placeholder:text-muted/40 focus:outline-none focus:ring-1 focus:ring-accent/30 focus:border-accent/50 transition-shadow"
+                className="w-full h-9 px-3 rounded-lg bg-page border border-border text-xs text-foreground font-mono placeholder:text-muted/40 focus:outline-none focus:ring-1 focus:ring-accent/30 focus:border-accent/50 transition-shadow"
               />
             </div>
           </div>
@@ -421,7 +421,7 @@ export function CreateExtDialog({ onClose }: { onClose: () => void }) {
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="扩展数据 · 与标的 JOIN（可选自定义描述）"
-              className="w-full h-9 px-3 rounded-lg bg-base border border-border text-xs text-foreground placeholder:text-muted/40 focus:outline-none focus:ring-1 focus:ring-accent/30 focus:border-accent/50 transition-shadow"
+              className="w-full h-9 px-3 rounded-lg bg-page border border-border text-xs text-foreground placeholder:text-muted/40 focus:outline-none focus:ring-1 focus:ring-accent/30 focus:border-accent/50 transition-shadow"
             />
           </div>
 
@@ -435,7 +435,7 @@ export function CreateExtDialog({ onClose }: { onClose: () => void }) {
                 <select
                   value={method}
                   onChange={(e) => setMethod(e.target.value as 'GET' | 'POST')}
-                  className="h-8 shrink-0 rounded-lg border border-border bg-base px-2 text-[11px] text-foreground"
+                  className="h-8 shrink-0 rounded-lg border border-border bg-page px-2 text-[11px] text-foreground"
                 >
                   <option value="GET">GET</option>
                   <option value="POST">POST</option>
@@ -444,7 +444,7 @@ export function CreateExtDialog({ onClose }: { onClose: () => void }) {
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
                   placeholder="https://api.example.com/data"
-                  className="h-8 flex-1 min-w-0 rounded-lg border border-border bg-base px-3 text-[11px] font-mono text-foreground placeholder:text-muted/40 focus:outline-none focus:border-accent/50"
+                  className="h-8 flex-1 min-w-0 rounded-lg border border-border bg-page px-3 text-[11px] font-mono text-foreground placeholder:text-muted/40 focus:outline-none focus:border-accent/50"
                 />
                 <button
                   onClick={handleDetectUrl}
@@ -462,7 +462,7 @@ export function CreateExtDialog({ onClose }: { onClose: () => void }) {
                     value={responsePath}
                     onChange={(e) => setResponsePath(e.target.value)}
                     placeholder="data.list（可留空自动识别）"
-                    className="w-full h-8 rounded-lg border border-border bg-base px-2 text-[10px] font-mono text-foreground placeholder:text-muted/40 focus:outline-none focus:border-accent/50"
+                    className="w-full h-8 rounded-lg border border-border bg-page px-2 text-[10px] font-mono text-foreground placeholder:text-muted/40 focus:outline-none focus:border-accent/50"
                   />
                 </div>
                 <div>
@@ -472,7 +472,7 @@ export function CreateExtDialog({ onClose }: { onClose: () => void }) {
                     min={1}
                     value={schedule}
                     onChange={(e) => setSchedule(Number(e.target.value) || 1)}
-                    className="w-full h-8 rounded-lg border border-border bg-base px-2 text-[10px] font-mono text-foreground focus:outline-none focus:border-accent/50"
+                    className="w-full h-8 rounded-lg border border-border bg-page px-2 text-[10px] font-mono text-foreground focus:outline-none focus:border-accent/50"
                   />
                 </div>
               </div>
@@ -484,7 +484,7 @@ export function CreateExtDialog({ onClose }: { onClose: () => void }) {
                     onChange={(e) => setHeaderStr(e.target.value)}
                     rows={2}
                     placeholder='{"Authorization":"Bearer xxx"}'
-                    className="w-full rounded-lg border border-border bg-base px-2 py-1.5 text-[10px] font-mono text-foreground placeholder:text-muted/40 resize-none focus:outline-none focus:border-accent/50"
+                    className="w-full rounded-lg border border-border bg-page px-2 py-1.5 text-[10px] font-mono text-foreground placeholder:text-muted/40 resize-none focus:outline-none focus:border-accent/50"
                   />
                 </div>
                 <div>
@@ -494,7 +494,7 @@ export function CreateExtDialog({ onClose }: { onClose: () => void }) {
                     onChange={(e) => setFieldMapStr(e.target.value)}
                     rows={2}
                     placeholder='{"code":"symbol","val":"score"}'
-                    className="w-full rounded-lg border border-border bg-base px-2 py-1.5 text-[10px] font-mono text-foreground placeholder:text-muted/40 resize-none focus:outline-none focus:border-accent/50"
+                    className="w-full rounded-lg border border-border bg-page px-2 py-1.5 text-[10px] font-mono text-foreground placeholder:text-muted/40 resize-none focus:outline-none focus:border-accent/50"
                   />
                 </div>
               </div>
@@ -506,12 +506,12 @@ export function CreateExtDialog({ onClose }: { onClose: () => void }) {
                     onChange={(e) => setBody(e.target.value)}
                     rows={3}
                     placeholder='{"page":1}'
-                    className="w-full rounded-lg border border-border bg-base px-2 py-1.5 text-[10px] font-mono text-foreground placeholder:text-muted/40 resize-none focus:outline-none focus:border-accent/50"
+                    className="w-full rounded-lg border border-border bg-page px-2 py-1.5 text-[10px] font-mono text-foreground placeholder:text-muted/40 resize-none focus:outline-none focus:border-accent/50"
                   />
                 </div>
               )}
               {urlPreview && (
-                <div className="rounded-lg border border-border/50 bg-base/60 p-2.5 space-y-2">
+                <div className="rounded-lg border border-border/50 bg-page/60 p-2.5 space-y-2">
                   <div className="flex items-center justify-between text-[10px]">
                     <span className="text-secondary">识别到 {urlPreview.total_rows} 行 · 路径 {urlPreview.response_path || '根数组'}</span>
                     {urlPreview.response_path_candidates.length > 1 && (
@@ -679,18 +679,18 @@ export function CreateExtDialog({ onClose }: { onClose: () => void }) {
                         value={f.label}
                         onChange={(e) => updateField(idx, 'label', e.target.value)}
                         placeholder="显示名"
-                        className="w-[72px] h-7 px-2 rounded-md border border-border bg-base text-[11px] text-foreground placeholder:text-muted/40 focus:outline-none focus:border-accent/40"
+                        className="w-[72px] h-7 px-2 rounded-md border border-border bg-page text-[11px] text-foreground placeholder:text-muted/40 focus:outline-none focus:border-accent/40"
                       />
                       <input
                         value={f.name}
                         onChange={(e) => updateField(idx, 'name', e.target.value)}
                         placeholder="字段名"
-                        className="flex-1 h-7 px-2 rounded-md border border-border bg-base text-[11px] font-mono text-foreground placeholder:text-muted/40 focus:outline-none focus:border-accent/40"
+                        className="flex-1 h-7 px-2 rounded-md border border-border bg-page text-[11px] font-mono text-foreground placeholder:text-muted/40 focus:outline-none focus:border-accent/40"
                       />
                       <select
                         value={f.dtype}
                         onChange={(e) => updateField(idx, 'dtype', e.target.value)}
-                        className="h-7 px-2 rounded-md border border-border bg-base text-[11px] text-foreground"
+                        className="h-7 px-2 rounded-md border border-border bg-page text-[11px] text-foreground"
                       >
                         <option value="string">文本</option>
                         <option value="int">整数</option>

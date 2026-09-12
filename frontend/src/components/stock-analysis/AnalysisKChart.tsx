@@ -433,7 +433,7 @@ export function AnalysisKChart({
                 className={`inline-flex items-center gap-1 h-6 px-2 rounded-md text-[10px] font-medium border transition-all disabled:opacity-30 disabled:cursor-not-allowed ${
                   active
                     ? 'text-foreground'
-                    : 'text-muted bg-base/40 border-border/30 hover:border-border/60'
+                    : 'text-muted bg-page/40 border-border/30 hover:border-border/60'
                 }`}
                 style={active ? { borderColor: g.color + '66', backgroundColor: g.color + '1a' } : undefined}
               >
@@ -456,7 +456,7 @@ export function AnalysisKChart({
                   className={`h-6 px-2 rounded-md text-[10px] font-mono border transition-all ${
                     pivotRank === r
                       ? 'bg-[#8B5CF6]/15 border-[#8B5CF6]/40 text-[#c4b5fd]'
-                      : 'text-muted bg-base/40 border-border/30 hover:border-border/60'
+                      : 'text-muted bg-page/40 border-border/30 hover:border-border/60'
                   }`}
                 >
                   {r}
@@ -546,7 +546,7 @@ function LevelOverview({
   }
 
   return (
-    <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 rounded-lg border border-border/40 bg-base/20 px-3 py-2">
+    <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 rounded-lg border border-border/40 bg-page/20 px-3 py-2">
       {/* 当前价 */}
       <div className="sm:col-span-2 flex items-center gap-2 pb-1 border-b border-border/30 mb-0.5">
         <span className="text-[10px] text-muted">当前价</span>

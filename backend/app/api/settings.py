@@ -532,6 +532,7 @@ def get_preferences() -> dict:
         "webhook_enabled_default": preferences.get_webhook_enabled_default(),
         "webhook_default_channels": preferences.get_webhook_default_channels(),
         "sidebar_index_symbols": preferences.get_sidebar_index_symbols(),
+        "dashboard_index_symbols": preferences.get_dashboard_index_symbols(),
         "minute_intraday_refresh": preferences.get_minute_intraday_refresh(),
         "minute_intraday_refresh_interval": preferences.get_minute_intraday_refresh_interval(),
         "monitor_ext_fields": preferences.get_monitor_ext_fields(),
@@ -1008,6 +1009,29 @@ def update_watchlist_groups_in_nav(req: WatchlistGroupsInNavPrefs) -> dict:
     from app.services import preferences
     preferences.save({"watchlist_groups_in_nav": req.watchlist_groups_in_nav})
     return {"watchlist_groups_in_nav": req.watchlist_groups_in_nav}
+
+
+class DashboardIndexSymbolsIn(BaseModel):
+    """看板首页指数卡片列表 (指数页「添加到看板」维护)。空列表=恢复默认四大指数。"""
+    symbols: list[str] = []
+
+
+@router.put("/preferences/dashboard-index-symbols")
+def update_dashboard_index_symbols(req: DashboardIndexSymbolsIn) -> dict:
+    """保存看板指数卡片列表并失效总览缓存 (指数列表参与装配结果)。"""
+    from app.services import preferences
+    from app.api.overview import invalidate_overview_cache
+
+    from app.services.preferences import DASHBOARD_INDEX_SYMBOLS_MAX
+    symbols: list[str] = []
+    for s in req.symbols:
+        text = str(s).strip().upper()
+        if text and text not in symbols:
+            symbols.append(text)
+    symbols = symbols[:DASHBOARD_INDEX_SYMBOLS_MAX]
+    preferences.save({"dashboard_index_symbols": symbols})
+    invalidate_overview_cache()
+    return {"symbols": symbols}
 
 
 class RealtimeMonitorConfigIn(BaseModel):

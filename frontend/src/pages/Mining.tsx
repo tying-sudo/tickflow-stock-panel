@@ -8,11 +8,11 @@ export function Mining() {
   const [candidatesOpen, setCandidatesOpen] = useState(false)
 
   return (
-    <div className="flex min-h-full flex-col bg-base">
+    <div className="flex min-h-full flex-col bg-page">
       <PageHeader
         title="挖掘"
         subtitle={<span className="hidden md:inline">嵌套样本外因子与策略挖掘</span>}
-        className="shrink-0 flex-wrap gap-x-4 gap-y-2 bg-base/95 px-3 lg:flex-nowrap lg:px-5"
+        className="shrink-0 flex-wrap gap-x-4 gap-y-2 bg-page/95 px-3 lg:flex-nowrap lg:px-5"
         right={(
           <button
             type="button"

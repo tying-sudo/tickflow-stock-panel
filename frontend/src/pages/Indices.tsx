@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Activity, Loader2, Lock, RefreshCw, Search } from 'lucide-react'
-import { api, type IndexInstrument, type KlineRow, type MinuteKlineRow } from '@/lib/api'
+import { Activity, Check, LayoutDashboard, Loader2, Lock, Plus, RefreshCw, Search } from 'lucide-react'
+import { api, type IndexInstrument, type KlineRow, type MinuteKlineRow, type Preferences } from '@/lib/api'
 import { QK } from '@/lib/queryKeys'
 import { useCapabilities, usePreferences, useQuoteStatus } from '@/lib/useSharedQueries'
 import { EChartsCandlestick, type OHLC } from '@/components/EChartsCandlestick'
 import { EChartsIntraday } from '@/components/EChartsIntraday'
+import { toast } from '@/components/Toast'
 
 /** 北京时区今日 (YYYY-MM-DD)。sv-SE locale 输出 ISO 日期格式。 */
 function cnToday(): string {
@@ -107,6 +108,28 @@ export function Indices() {
 
   const prefs = usePreferences()
   const intradayRefetchMs = (prefs.data?.minute_intraday_refresh_interval ?? 6) * 1000
+
+  // 看板首页指数卡片列表 — 每项右侧「看板」按钮添加/移除; 空 = 后端回退默认四大指数
+  const dashSymbols = prefs.data?.dashboard_index_symbols ?? []
+  const toggleDash = useMutation({
+    mutationFn: (symbols: string[]) => api.updateDashboardIndexSymbols(symbols),
+    onSuccess: (res, next) => {
+      // 乐观写回偏好缓存 + 失效看板聚合, 看板首页立即生效
+      qc.setQueryData<Preferences | undefined>(QK.preferences, (old) =>
+        old ? { ...old, dashboard_index_symbols: res.symbols } : old)
+      qc.invalidateQueries({ queryKey: ['overview-market'] })
+      const added = next.length > dashSymbols.length
+      toast(added ? '已添加到看板首页' : '已从看板首页移除', 'success')
+    },
+    onError: () => toast('看板指数保存失败', 'error'),
+  })
+  const isDashAdded = (symbol: string) => dashSymbols.includes(symbol)
+  const toggleDashIndex = (symbol: string) => {
+    const next = isDashAdded(symbol)
+      ? dashSymbols.filter(s => s !== symbol)
+      : [...dashSymbols, symbol]
+    toggleDash.mutate(next)
+  }
 
   const list = useQuery({
     queryKey: QK.indexList,
@@ -233,31 +256,57 @@ export function Indices() {
     const pct = q?.change_pct ?? q?.pct
     const current = q?.last_price ?? q?.price ?? q?.close
     const active = item.symbol === selectedSymbol
+    const added = isDashAdded(item.symbol)
+    // 日K兜底行 (实时缺席, 如 97/98 国证新指数): 非当日数据弱化 + tooltip
+    const stale = !!q?.date && q.date !== today
     return (
-      <button
+      <div
         key={item.symbol}
         onClick={() => selectIndex(item.symbol)}
-        className={`w-full rounded-btn px-2 py-2 text-left transition-colors ${active ? 'bg-accent/15 text-foreground' : 'hover:bg-elevated text-secondary'}`}
+        title={stale ? `实时行情未覆盖，数据截至 ${q!.date} 收盘` : undefined}
+        className={`w-full cursor-pointer rounded-btn px-2 py-2 text-left transition-colors ${active ? 'bg-accent/15 text-foreground' : 'hover:bg-elevated text-secondary'}`}
       >
         <div className="flex items-center justify-between gap-2">
-          <span className="truncate text-xs font-medium">{item.name || item.symbol}</span>
-          <span className={`text-[10px] font-mono ${Number(pct ?? 0) >= 0 ? 'text-bull' : 'text-bear'}`}>{fmtPct(pct)}</span>
+          <span className="min-w-0 truncate text-xs font-medium">{item.name || item.symbol}</span>
+          <span className={`shrink-0 text-[10px] font-mono ${stale ? 'opacity-60' : ''} ${Number(pct ?? 0) >= 0 ? 'text-bull' : 'text-bear'}`}>{fmtPct(pct)}</span>
+          {/* 「看板」添加/移除 — 点击不触发选中, 维护看板首页指数卡片 */}
+          <button
+            onClick={(e) => { e.stopPropagation(); toggleDashIndex(item.symbol) }}
+            disabled={toggleDash.isPending}
+            title={added ? '从看板首页移除' : '添加到看板首页'}
+            className={`inline-flex shrink-0 items-center gap-0.5 rounded border px-1 py-0.5 text-[9px] leading-none transition-colors disabled:opacity-50 ${
+              added
+                ? 'border-accent/50 bg-accent/10 text-accent hover:border-danger/50 hover:text-danger'
+                : 'border-border bg-page text-muted hover:border-accent hover:text-accent'
+            }`}
+          >
+            {added ? <Check className="h-2.5 w-2.5" /> : <Plus className="h-2.5 w-2.5" />}
+            看板
+          </button>
         </div>
-        <div className="mt-0.5 flex items-center justify-between text-[10px] font-mono text-muted">
+        <div className={`mt-0.5 flex items-center justify-between text-[10px] font-mono text-muted ${stale ? 'opacity-60' : ''}`}>
           <span>{item.symbol}</span>
           <span>{fmtNum(current)}</span>
         </div>
-      </button>
+      </div>
     )
   }
 
   return (
-    <div className="h-full overflow-auto bg-base p-4">
+    <div className="h-full overflow-auto bg-page p-4">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold text-foreground">指数</h1>
           <p className="mt-1 text-xs text-muted">
             指数使用独立 kline_index_* parquet，不进入股票选股和策略链路。
+          </p>
+          <p className="mt-1 flex items-start gap-1 rounded-btn bg-accent/8 px-2 py-1.5 text-[11px] leading-relaxed text-secondary">
+            <LayoutDashboard className="mt-0.5 h-3 w-3 shrink-0 text-accent" />
+            <span>
+              每个指数右侧的<strong className="text-accent">「看板」</strong>按钮可把它添加到
+              <span className="text-foreground">看板首页</span>的指数卡片行，再点一次即移除；
+              全部移除后看板恢复显示默认四大指数。
+            </span>
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -288,7 +337,7 @@ export function Indices() {
               value={keyword}
               onChange={e => setKeyword(e.target.value)}
               placeholder="搜索指数代码/名称"
-              className="w-full rounded-btn border border-border bg-base py-1.5 pl-7 pr-2 text-xs text-foreground outline-none focus:border-accent"
+              className="w-full rounded-btn border border-border bg-page py-1.5 pl-7 pr-2 text-xs text-foreground outline-none focus:border-accent"
             />
           </div>
           <div className="mb-3 space-y-1 border-b border-border/60 pb-3">
@@ -326,14 +375,14 @@ export function Indices() {
                 type="date"
                 value={range.start}
                 onChange={e => setRange(r => ({ ...r, start: e.target.value }))}
-                className="rounded-btn border border-border bg-base px-2 py-1 text-secondary outline-none focus:border-accent"
+                className="rounded-btn border border-border bg-page px-2 py-1 text-secondary outline-none focus:border-accent"
               />
               <span className="text-muted">至</span>
               <input
                 type="date"
                 value={range.end}
                 onChange={e => setRange(r => ({ ...r, end: e.target.value }))}
-                className="rounded-btn border border-border bg-base px-2 py-1 text-secondary outline-none focus:border-accent"
+                className="rounded-btn border border-border bg-page px-2 py-1 text-secondary outline-none focus:border-accent"
               />
             </div>
           </div>

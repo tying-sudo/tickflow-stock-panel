@@ -160,7 +160,7 @@ export function TickFlowKeySection({ right }: { right?: React.ReactNode }) {
             placeholder={mode === 'none' ? '粘贴 TickFlow API Key' : '粘贴新 Key 替换当前'}
             value={keyInput}
             onChange={(e) => { setKeyInput(e.target.value); if (saved) setSaved(false) }}
-            className="w-full px-3 py-2 pr-9 rounded-input bg-base border border-border text-sm font-mono focus:outline-none focus:border-accent transition-colors duration-150 ease-smooth"
+            className="w-full px-3 py-2 pr-9 rounded-input bg-page border border-border text-sm font-mono focus:outline-none focus:border-accent transition-colors duration-150 ease-smooth"
           />
           <button
             type="button"
@@ -229,7 +229,7 @@ export function TickFlowKeySection({ right }: { right?: React.ReactNode }) {
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             onClick={() => setConfirmClear(false)}
           />
-          <div className="relative w-[90vw] max-w-[380px] rounded-card border border-border bg-base shadow-2xl p-6">
+          <div className="relative w-[90vw] max-w-[380px] rounded-card border border-border bg-page shadow-2xl p-6">
             <h3 className="text-sm font-medium text-foreground mb-2">清除 API Key</h3>
             <p className="text-xs text-secondary mb-5">
               清除后将退回 None 档(仅历史日K),需要重新输入 Key 才能恢复。

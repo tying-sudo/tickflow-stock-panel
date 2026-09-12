@@ -12,7 +12,7 @@ import { useCardFlash, cardFlashCls } from '@/lib/useCardFlash'
 
 // 统一的输入框样式(与项目其他设置页一致)
 const INPUT_CLS =
-  'w-full h-9 px-2.5 rounded-lg bg-base border-0 ring-1 ring-border/30 text-xs font-mono text-foreground placeholder:text-muted/30 focus:outline-none focus:ring-2 focus:ring-accent/30 transition-shadow'
+  'w-full h-9 px-2.5 rounded-lg bg-page border-0 ring-1 ring-border/30 text-xs font-mono text-foreground placeholder:text-muted/30 focus:outline-none focus:ring-2 focus:ring-accent/30 transition-shadow'
 
 // 空/非法输入 → undefined (后端保持原值), 合法正整数 → int
 const toPositiveInt = (v: string) => {
@@ -345,7 +345,7 @@ export function SettingsAIPanel({ highlight }: { highlight?: string } = {}) {
         <div className="flex flex-wrap items-start gap-2">
           {PRESETS.map(p => (
             <button key={p.label} onClick={() => handlePreset(p)}
-              className={`rounded-lg border px-3 py-2 text-left transition-all ${selectedPreset?.label === p.label ? 'border-accent/40 bg-accent/10 text-accent' : 'border-border bg-base text-secondary hover:border-accent/30'}`}>
+              className={`rounded-lg border px-3 py-2 text-left transition-all ${selectedPreset?.label === p.label ? 'border-accent/40 bg-accent/10 text-accent' : 'border-border bg-page text-secondary hover:border-accent/30'}`}>
               <div className="flex items-center gap-1.5 text-xs font-medium">
                 <span>{p.label}</span>
                 {p.provider === CODEX_PROVIDER && <Terminal className="h-3 w-3" />}
@@ -354,7 +354,7 @@ export function SettingsAIPanel({ highlight }: { highlight?: string } = {}) {
           ))}
         </div>
         {selectedPreset && (
-          <div className="mt-3 rounded-btn border border-border/30 bg-base/30 px-3 py-2 text-[11px] leading-relaxed">
+          <div className="mt-3 rounded-btn border border-border/30 bg-page/30 px-3 py-2 text-[11px] leading-relaxed">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <span className="text-secondary">{selectedPreset.description}</span>
             </div>
@@ -374,7 +374,7 @@ export function SettingsAIPanel({ highlight }: { highlight?: string } = {}) {
         title={configTitle}
         right={
           <span className="inline-flex items-center gap-1.5 text-[10px] text-muted/60" title={isCodexProvider ? 'Use local Codex CLI via codex exec' : 'Use OpenAI-compatible Chat Completions API'}>
-            <span className="rounded-full border border-border/40 bg-base/50 px-1.5 py-px font-mono">{isCodexProvider ? 'codex exec' : 'Chat Completions'}</span>
+            <span className="rounded-full border border-border/40 bg-page/50 px-1.5 py-px font-mono">{isCodexProvider ? 'codex exec' : 'Chat Completions'}</span>
             {isCodexProvider ? 'CLI' : '接口'}
           </span>
         }
@@ -504,7 +504,7 @@ export function SettingsAIPanel({ highlight }: { highlight?: string } = {}) {
       {confirmClear && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setConfirmClear(false)} />
-          <div className="relative w-[90vw] max-w-[380px] rounded-card border border-border bg-base shadow-2xl p-6">
+          <div className="relative w-[90vw] max-w-[380px] rounded-card border border-border bg-page shadow-2xl p-6">
             <h3 className="text-sm font-medium text-foreground mb-2">清空 AI 配置</h3>
             <p className="text-xs text-secondary mb-5 leading-relaxed">
               这会清空已保存的 provider、API Key、API 地址、模型和 Codex CLI 命令。之后可以重新配置。

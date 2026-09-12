@@ -132,7 +132,7 @@ export function ResearchCandidatesDialog({ onClose, onLoadStrategy }: {
     <Modal
       onClose={onClose}
       labelledBy="research-candidates-title"
-      panelClassName="flex max-h-[82vh] w-[94vw] max-w-4xl flex-col overflow-hidden rounded-card border border-border bg-base shadow-2xl"
+      panelClassName="flex max-h-[82vh] w-[94vw] max-w-4xl flex-col overflow-hidden rounded-card border border-border bg-page shadow-2xl"
     >
       <header className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3">
         <BookmarkCheck className="h-4 w-4 text-accent" />
@@ -268,7 +268,7 @@ export function ResearchCandidatesDialog({ onClose, onLoadStrategy }: {
                     value={linkDraft.strategyId}
                     onChange={event => setLinkDraft(current => current ? { ...current, strategyId: event.target.value } : current)}
                     aria-label="目标策略"
-                    className="h-8 w-full rounded-input border border-border bg-base px-2 text-xs text-secondary focus:border-accent focus:outline-none"
+                    className="h-8 w-full rounded-input border border-border bg-page px-2 text-xs text-secondary focus:border-accent focus:outline-none"
                   >
                     {options.length === 0 && <option value="">没有兼容策略</option>}
                     {options.map(strategy => (
@@ -278,7 +278,7 @@ export function ResearchCandidatesDialog({ onClose, onLoadStrategy }: {
                 </label>
                 <div>
                   <span className="mb-1 block text-[10px] text-muted">评分方向</span>
-                  <div className="grid h-8 grid-cols-2 overflow-hidden rounded-input border border-border bg-base">
+                  <div className="grid h-8 grid-cols-2 overflow-hidden rounded-input border border-border bg-page">
                     {([['high', ArrowUp, '高值'], ['low', ArrowDown, '低值']] as const).map(([value, Icon, label]) => (
                       <button
                         key={value}
@@ -315,7 +315,7 @@ export function ResearchCandidatesDialog({ onClose, onLoadStrategy }: {
                         ...current,
                         weight: Math.min(100, Math.max(1, Number(event.target.value) || 1)),
                       } : current)}
-                      className="h-8 w-full rounded-input border border-border bg-base px-2 pr-7 text-xs text-foreground focus:border-accent focus:outline-none"
+                      className="h-8 w-full rounded-input border border-border bg-page px-2 pr-7 text-xs text-foreground focus:border-accent focus:outline-none"
                     />
                     <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-muted">%</span>
                   </div>

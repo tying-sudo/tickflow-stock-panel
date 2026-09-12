@@ -750,6 +750,26 @@ def get_sidebar_index_symbols() -> list[str]:
     return [s for s in stored if s in allowed]
 
 
+# 看板首页指数卡片上限: 超出后追加项拒绝 (防误触塞满看板)。
+DASHBOARD_INDEX_SYMBOLS_MAX = 12
+
+
+def get_dashboard_index_symbols() -> list[str]:
+    """看板首页指数卡片显示列表 (指数页「添加到看板」维护)。
+
+    空/未设置 = 默认四大核心指数 (由 overview 层回退)。去重 + 大写规范化。
+    """
+    raw = load().get("dashboard_index_symbols")
+    if not isinstance(raw, list):
+        return []
+    out: list[str] = []
+    for s in raw:
+        text = str(s).strip().upper()
+        if text and text not in out:
+            out.append(text)
+    return out[:DASHBOARD_INDEX_SYMBOLS_MAX]
+
+
 def get_strategy_monitor_enabled() -> bool:
     """策略告警评估总开关。"""
     return load().get("strategy_monitor_enabled", False)
@@ -948,6 +968,7 @@ def get_realtime_monitor_config() -> dict:
         "strategy_monitor_enabled": get_strategy_monitor_enabled(),
         "strategy_monitor_ids": get_strategy_monitor_ids(),
         "sidebar_index_symbols": get_sidebar_index_symbols(),
+        "dashboard_index_symbols": get_dashboard_index_symbols(),
         "screener_auto_run": get_screener_auto_run(),
         "minute_intraday_refresh": get_minute_intraday_refresh(),
         "minute_intraday_refresh_interval": get_minute_intraday_refresh_interval(),

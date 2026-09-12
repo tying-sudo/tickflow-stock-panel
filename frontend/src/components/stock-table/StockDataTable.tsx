@@ -9,6 +9,7 @@ import { cloneElement, isValidElement, useRef, type ReactElement, type ReactNode
 import { useVirtualizer, type VirtualItem } from '@tanstack/react-virtual'
 import type { ColumnConfig } from '@/lib/list-columns'
 import { UNSORTABLE_KEYS } from '@/lib/stock-table'
+import { useIsMobile } from '@/lib/useIsMobile'
 import { VIRTUAL_LIST_THRESHOLD, useParentScroll } from '@/components/virtual-list/useParentScroll'
 import type { SortState } from './useTableSort'
 
@@ -43,10 +44,11 @@ export interface StockDataTableProps {
 }
 
 function alignThClass(align: ColumnConfig['align']): string {
-  // 表头一律不换行: 窄列(如收起的图表列)中标签/排序箭头折行会把整行表头顶高
-  if (align === 'right') return 'px-3 py-2.5 font-medium text-right whitespace-nowrap'
-  if (align === 'center') return 'px-3 py-2.5 font-medium text-center whitespace-nowrap'
-  return 'px-3 py-2.5 font-medium whitespace-nowrap'
+  // 表头一律不换行: 窄列(如收起的图表列)中标签/排序箭头折行会把整行表头顶高。
+  // 移动端 px-2 收紧列间距 (900px 下限不在移动端生效后, 表格按内容自然收缩)
+  if (align === 'right') return 'px-2 md:px-3 py-2.5 font-medium text-right whitespace-nowrap'
+  if (align === 'center') return 'px-2 md:px-3 py-2.5 font-medium text-center whitespace-nowrap'
+  return 'px-2 md:px-3 py-2.5 font-medium whitespace-nowrap'
 }
 
 export function StockDataTable({
@@ -64,8 +66,13 @@ export function StockDataTable({
   className = 'rounded-card border border-border overflow-x-auto',
 }: StockDataTableProps) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const isMobile = useIsMobile()
   const visibleColumns = columns.filter(c => c.visible)
-  const computedMinWidth = minWidth ?? Math.max(900, visibleColumns.length * 110)
+  // 移动端取消 900px 桌面下限: 表格按列内容自然收缩 — 列少时贴合视口免横滑,
+  // 列多(含图表列)时横滑距离也只剩真实内容所需; 桌面保持原公式不变
+  const computedMinWidth = minWidth ?? (isMobile
+    ? Math.max(280, visibleColumns.length * 76)
+    : Math.max(900, visibleColumns.length * 110))
   const virtualized = rows.length > VIRTUAL_LIST_THRESHOLD
   const { getScrollElement, scrollMargin } = useParentScroll(containerRef, virtualized)
   const rowVirtualizer = useVirtualizer({

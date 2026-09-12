@@ -10,7 +10,10 @@ export default {
     extend: {
       colors: {
         // §6.0.1 色板 — CSS variables 见 src/index.css
-        base:      'hsl(var(--base) / <alpha-value>)',
+        // ⚠️ 色彩键名不得与 Tailwind 内置字号类撞名: 旧键名 `base` 曾使 text-base 被 JIT 双重解析
+        //    (字号 + 颜色), 颜色规则按字母序落在 text-accent 之后把它覆盖成近黑(--base 背景色),
+        //    且 vite 重启会重排规则顺序导致问题"随机"复现。故改名 page, 全部用法 bg-base→bg-page。
+        page:      'hsl(var(--base) / <alpha-value>)',
         surface:   'hsl(var(--surface) / <alpha-value>)',
         elevated:  'hsl(var(--elevated) / <alpha-value>)',
         border:    'hsl(var(--border) / <alpha-value>)',

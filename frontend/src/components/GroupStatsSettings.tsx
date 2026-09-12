@@ -56,7 +56,7 @@ export function GroupStatsSettings({
         <SlidersHorizontal className="h-3 w-3" />
       </button>
       {open && (
-        <div className="absolute right-0 top-full z-30 mt-1 w-64 rounded-card border border-border bg-base p-3 shadow-xl">
+        <div className="absolute right-0 top-full z-30 mt-1 w-64 rounded-card border border-border bg-page p-3 shadow-xl">
           <div className="text-[10px] uppercase tracking-wider text-muted">指标</div>
           <div className="mt-1 flex flex-wrap gap-1">
             {GROUP_METRICS.map(m => (

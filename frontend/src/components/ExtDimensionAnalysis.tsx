@@ -343,7 +343,7 @@ export function ExtDimensionAnalysis({
                         value={search}
                         onChange={(e) => { setSearch(e.target.value); setSelectedGroup(null) }}
                         placeholder={`搜索${activeKindLabel}`}
-                        className="h-8 w-full rounded-btn border border-border bg-base pl-8 pr-3 text-xs text-foreground placeholder:text-muted/50 focus:outline-none focus:border-accent/50"
+                        className="h-8 w-full rounded-btn border border-border bg-page pl-8 pr-3 text-xs text-foreground placeholder:text-muted/50 focus:outline-none focus:border-accent/50"
                       />
                     </div>
                   </div>

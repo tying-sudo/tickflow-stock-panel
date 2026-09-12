@@ -248,7 +248,7 @@ export function PriceAlertDialog({
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-[180px_1fr]">
               <div className="space-y-1.5">
                 <span className="text-[11px] text-muted">触发方向</span>
-                <div className="grid h-9 grid-cols-2 overflow-hidden rounded-md border border-border bg-base">
+                <div className="grid h-9 grid-cols-2 overflow-hidden rounded-md border border-border bg-page">
                   <button onClick={() => setDirection('up')} className={`inline-flex items-center justify-center gap-1 text-xs font-medium transition-colors ${direction === 'up' ? 'bg-bull/10 text-bull' : 'text-muted hover:text-foreground'}`}>
                     <ArrowUp className="h-3.5 w-3.5" />涨至
                   </button>
@@ -260,7 +260,7 @@ export function PriceAlertDialog({
               <label className="space-y-1.5">
                 <span className="text-[11px] text-muted">目标价格</span>
                 <div className="relative">
-                  <input type="number" min="0" step="0.01" value={target} onChange={event => updateTarget(event.target.value)} className="h-9 w-full rounded-md border border-border bg-base px-3 pr-14 font-mono text-sm text-foreground focus:border-sky-400/50 focus:outline-none" />
+                  <input type="number" min="0" step="0.01" value={target} onChange={event => updateTarget(event.target.value)} className="h-9 w-full rounded-md border border-border bg-page px-3 pr-14 font-mono text-sm text-foreground focus:border-sky-400/50 focus:outline-none" />
                   {targetValid && currentPrice != null && (
                     <span className={`absolute right-3 top-2.5 font-mono text-[10px] ${targetValue >= currentPrice ? 'text-bull' : 'text-bear'}`}>
                       {((targetValue / currentPrice - 1) * 100).toFixed(2)}%
@@ -311,13 +311,13 @@ export function PriceAlertDialog({
             <div className="mt-5 grid grid-cols-1 gap-4 border-t border-border/60 pt-4 sm:grid-cols-2">
               <label className="space-y-1.5">
                 <span className="text-[11px] text-muted">重复提醒</span>
-                <select value={cooldown} onChange={event => setCooldown(Number(event.target.value))} className="h-9 w-full rounded-md border border-border bg-base px-3 text-xs text-foreground focus:outline-none">
+                <select value={cooldown} onChange={event => setCooldown(Number(event.target.value))} className="h-9 w-full rounded-md border border-border bg-page px-3 text-xs text-foreground focus:outline-none">
                   {COOLDOWNS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
               </label>
               <label className="space-y-1.5">
                 <span className="text-[11px] text-muted">自定义提示</span>
-                <input value={message} onChange={event => updateMessage(event.target.value)} placeholder="留空使用默认内容" className="h-9 w-full rounded-md border border-border bg-base px-3 text-xs text-foreground placeholder:text-muted/50 focus:outline-none" />
+                <input value={message} onChange={event => updateMessage(event.target.value)} placeholder="留空使用默认内容" className="h-9 w-full rounded-md border border-border bg-page px-3 text-xs text-foreground placeholder:text-muted/50 focus:outline-none" />
               </label>
             </div>
 
@@ -388,7 +388,7 @@ export function PriceAlertDialog({
           </div>
         )}
 
-        <footer className="flex min-h-14 items-center justify-between gap-3 border-t border-border/60 bg-base/30 px-5 py-2.5">
+        <footer className="flex min-h-14 items-center justify-between gap-3 border-t border-border/60 bg-page/30 px-5 py-2.5">
           <Link to="/monitor" onClick={onClose} className="inline-flex items-center gap-1 text-[11px] text-muted hover:text-sky-400">
             监控中心<ExternalLink className="h-3 w-3" />
           </Link>
